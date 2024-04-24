@@ -20,7 +20,6 @@ import platform
 
 import struct
 import sys
-#from . import mavutil
 
 try:
     long        # Python 2 has long
@@ -622,122 +621,6 @@ class DFReader(object):
         '''add a new message'''
         type = m.get_type()
         self.messages[type] = m
-        '''if m.fmt.instance_field is not None:
-            i = m.__getattr__(m.fmt.instance_field)
-            self.messages["%s[%s]" % (type, str(i))] = m
-
-        if self.clock:
-            self.clock.message_arrived(m)
-
-        if type == 'MSG' and hasattr(m,'Message'):
-            if m.Message.find("Rover") != -1:
-                self.mav_type = mavutil.mavlink.MAV_TYPE_GROUND_ROVER
-            elif m.Message.find("Plane") != -1:
-                self.mav_type = mavutil.mavlink.MAV_TYPE_FIXED_WING
-            elif m.Message.find("Copter") != -1:
-                self.mav_type = mavutil.mavlink.MAV_TYPE_QUADROTOR
-            elif m.Message.startswith("Antenna"):
-                self.mav_type = mavutil.mavlink.MAV_TYPE_ANTENNA_TRACKER
-            elif m.Message.find("ArduSub") != -1:
-                self.mav_type = mavutil.mavlink.MAV_TYPE_SUBMARINE
-            elif m.Message.find("Blimp") != -1:
-                self.mav_type = mavutil.mavlink.MAV_TYPE_AIRSHIP
-        if type == 'VER' and hasattr(m,'BU'):
-            build_types = { 1: mavutil.mavlink.MAV_TYPE_GROUND_ROVER,
-                            2: mavutil.mavlink.MAV_TYPE_QUADROTOR,
-                            3: mavutil.mavlink.MAV_TYPE_FIXED_WING,
-                            4: mavutil.mavlink.MAV_TYPE_ANTENNA_TRACKER,
-                            7: mavutil.mavlink.MAV_TYPE_SUBMARINE,
-                            13: mavutil.mavlink.MAV_TYPE_HELICOPTER,
-                            12: mavutil.mavlink.MAV_TYPE_AIRSHIP,
-                            }
-            mavtype = build_types.get(m.BU,None)
-            if mavtype is not None:
-                self.mav_type = mavtype
-        if type == 'MODE':
-            if hasattr(m,'Mode') and isinstance(m.Mode, str):
-                self.flightmode = m.Mode.upper()
-            elif 'ModeNum' in m._fieldnames:
-                mapping = mavutil.mode_mapping_bynumber(self.mav_type)
-                if mapping is not None and m.ModeNum in mapping:
-                    self.flightmode = mapping[m.ModeNum]
-                else:
-                    self.flightmode = 'UNKNOWN'
-            elif hasattr(m,'Mode'):
-                self.flightmode = mavutil.mode_string_acm(m.Mode)
-        if type == 'STAT' and 'MainState' in m._fieldnames:
-            self.flightmode = mavutil.mode_string_px4(m.MainState)
-        if type == 'PARM' and getattr(m, 'Name', None) is not None:
-            self.params[m.Name] = m.Value
-            if hasattr(m,'Default') and not math.isnan(m.Default):
-                if not hasattr(self,'param_defaults'):
-                    self.param_defaults = {}
-                self.param_defaults[m.Name] = m.Default
-        self._set_time(m)'''
-
-    '''def recv_match(self, condition=None, type=None, blocking=False):
-        # recv the next message that matches the given condition
-        # type can be a string or a list of strings
-        if type is not None:
-            if isinstance(type, str):
-                type = set([type])
-            elif isinstance(type, list):
-                type = set(type)
-        while True:
-            if type is not None:
-                self.skip_to_type(type)
-            m = self.recv_msg()
-            if m is None:
-                return None
-            if type is not None and not m.get_type() in type:
-                continue
-            #if not mavutil.evaluate_condition(condition, self.messages):
-            #    continue
-            return m
-
-    def check_condition(self, condition):
-        #check if a condition is true
-        #return mavutil.evaluate_condition(condition, self.messages)
-        return None
-
-    def param(self, name, default=None):
-        # convenient function for returning an arbitrary MAVLink
-        #   parameter with a default
-        if name not in self.params:
-            return default
-        return self.params[name]
-
-    def flightmode_list(self):
-        # return an array of tuples for all flightmodes in log. Tuple is (modestring, t0, t1)
-        tstamp = None
-        fmode = None
-        if self._flightmodes is None:
-            self._rewind()
-            self._flightmodes = []
-            types = set(['MODE'])
-            while True:
-                m = self.recv_match(type=types)
-                if m is None:
-                    break
-                tstamp = m._timestamp
-                if self.flightmode == fmode:
-                    continue
-                if len(self._flightmodes) > 0:
-                    (mode, t0, t1) = self._flightmodes[-1]
-                    self._flightmodes[-1] = (mode, t0, tstamp)
-                self._flightmodes.append((self.flightmode, tstamp, None))
-                fmode = self.flightmode
-            if tstamp is not None:
-                (mode, t0, t1) = self._flightmodes[-1]
-                self._flightmodes[-1] = (mode, t0, self.last_timestamp())
-
-        self._rewind()
-        return self._flightmodes
-    
-    def close(self):
-        # close the log file
-        self.filehandle.close()
-    '''
     
 
 class DFReader_binary(DFReader):
@@ -1147,8 +1030,9 @@ class DFReader_text(DFReader):
 
         while ofs+16 < self.data_len:
             mtype = self.data_map[ofs:ofs+4]
-            if mtype[3] == b',':
-                mtype = mtype[0:3]
+            if len(mtype) > 2:
+                if mtype[3] == b',':
+                    mtype = mtype[0:3]
             if not mtype in self.offsets:
                 self.counts[mtype] = 0
                 self.offsets[mtype] = []
@@ -1298,28 +1182,3 @@ class DFReader_text(DFReader):
         m = self.recv_msg()
         return m._timestamp
 
-if __name__ == "__main__":
-    use_profiler = False
-    if use_profiler:
-        from line_profiler import LineProfiler
-        profiler = LineProfiler()
-        profiler.add_function(DFReader_binary._parse_next)
-        profiler.add_function(DFReader_binary._add_msg)
-        profiler.add_function(DFReader._set_time)
-        profiler.enable_by_count()
-
-    filename = sys.argv[1]
-    if filename.endswith('.log'):
-        log = DFReader_text(filename)
-    else:
-        log = DFReader_binary(filename)
-    #bfile = filename + ".bin"
-    #bout = open(bfile, 'wb')
-    while True:
-        m = log.recv_msg()
-        if m is None:
-            break
-        #bout.write(m.get_msgbuf())
-        #print(m)
-    if use_profiler:
-        profiler.print_stats()
