@@ -1,6 +1,8 @@
 package clocks
 
-import "https://github.com/edancain/telemetry_parser/blob/main/src/messages"
+import (
+	"telemetry_parser/src/messages"
+)
 
 type DFReaderClock struct {
 	timebase  float64
