@@ -1,32 +1,34 @@
 package clocks
 
-import "telemetry_parser/src/messages"
+import (
+	"telemetry_parser/src/messages"
+)
 
 type DFReaderClockGPSInterpolated struct {
-    *DFReaderClock
+    *DFReaderClockBase
     MsgRate         map[string]float64
-    Counts          map[string]int
-    CountsSinceGPS  map[string]int
+    Counts          map[string]float64
+    CountsSinceGPS  map[string]float64
 }
 
 func NewDFReaderClockGPSInterpolated() *DFReaderClockGPSInterpolated {
     clock := &DFReaderClockGPSInterpolated{
-		DFReaderClock:  NewDFReaderClock(),
+		DFReaderClockBase:  NewDFReaderClockBase(),
 		MsgRate:        make(map[string]float64),
-		Counts:         make(map[string]int),
-		CountsSinceGPS: make(map[string]int),
+		Counts:         make(map[string]float64),
+		CountsSinceGPS: make(map[string]float64),
 	}
 	return clock
 }
 
 func (clock *DFReaderClockGPSInterpolated) RewindEvent() {
-	clock.Counts = make(map[string]int)
-	clock.CountsSinceGPS = make(map[string]int)
+	clock.Counts = make(map[string]float64)
+	clock.CountsSinceGPS = make(map[string]float64)
 }
 
 // MessageArrived handles the arrival of a message
-func (clock *DFReaderClockGPSInterpolated) MessageArrived(m *messages.DFMessage) {
-	msgType := m.GetType()
+func (clock *DFReaderClockGPSInterpolated) MessageArrived(message *messages.DFMessage) {
+	msgType := message.GetType()
 	if _, ok := clock.Counts[msgType]; !ok {
 		clock.Counts[msgType] = 1
 	} else {
@@ -40,42 +42,19 @@ func (clock *DFReaderClockGPSInterpolated) MessageArrived(m *messages.DFMessage)
 	}
 
 	if msgType == "GPS" || msgType == "GPS2" {
-		clock.GPSMessageArrived(m)
+		clock.GPSMessageArrived(message)
 	}
 }
 
-// GPSMessageArrived adjusts the time base from GPS message
-
 func (clock *DFReaderClockGPSInterpolated) GPSMessageArrived(message *messages.DFMessage) {
-    var gpsWeek, gpsTimeMs int64
+    gpsWeek := message.GetAttr("Week").(int)
+	gpsTimeMs := message.GetAttr("TimeMS").(int)
 
-    // Loop through each element in the slice
-    for _, element := range message.Elements {
-        // Check if the element is a map[string]interface{}
-        if elementMap, ok := element.(map[string]interface{}); ok {
-            // Try to get the "Week" value
-            if val, ok := elementMap["Week"].(int64); ok {
-                gpsWeek = val
-                break // Break out of the loop if value is found
-            } else if val, ok := elementMap["GWk"].(int64); ok {
-                gpsWeek = val
-                break // Break out of the loop if value is found
-            } else if val, ok := elementMap["Wk"].(int64); ok {
-                gpsWeek = val
-                break // Break out of the loop if value is found
-            }
-        }
-    }
+    if gpsWeek == 0 || gpsTimeMs == 0 {
+		return
+	}
 
-    // Similarly, try to get the "TimeMS" value
-    for _, element := range message.Elements {
-        if val, ok := element.(int64); ok {
-            gpsTimeMs = val
-            break // Break out of the loop if value is found
-        }
-    }
-
-    t := clock._gpsTimeToTime(gpsWeek, gpsTimeMs)
+    t := clock.gps_time_to_time(gpsWeek, gpsTimeMs)
 
     deltat := t - clock.timebase
     if deltat <= 0 {
@@ -90,5 +69,15 @@ func (clock *DFReaderClockGPSInterpolated) GPSMessageArrived(message *messages.D
     }
     clock.MsgRate["IMU"] = 50.0
     clock.timebase = t
-    clock.CountsSinceGPS = make(map[string]int)
+    clock.CountsSinceGPS = make(map[string]float64)
 }
+
+func (clock *DFReaderClockGPSInterpolated) SetMessageTimestamp(message *messages.DFMessage) {
+    rate := clock.MsgRate[message.Fmt.Name]
+    if int(rate) == 0 {
+        rate = 50
+    }
+    count := clock.CountsSinceGPS[message.Fmt.Name]
+    message.TimeStamp = clock.timebase + count/rate
+}
+

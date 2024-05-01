@@ -10,14 +10,28 @@ import (
 	"unicode"
 )
 
+type GPS struct {
+	GWk     int
+	GMS     int
+	TimeUS  int
+	Week    float64
+	TimeMS  float64
+	T       float64
+	GPSTime float64
+}
+
+type TimeMsg struct {
+	StartTime float64
+}
+
 type DFMessage struct {
     Fmt             *Format
     Elements        []interface{}
     ApplyMultiplier bool
     FieldNames      []string
     Parent          *Parent
-    TimeStamp       int64
-    TimeMS          int64
+    TimeStamp       float64
+    TimeMS          float64
 }
 
 type Format struct {
@@ -37,7 +51,7 @@ type Parent struct {
     Messages map[string]*DFMessage
 }
 
-func NewDFMessage(fmt *Format, elements []interface{}, applyMultiplier bool, parent *Parent, timestamp int64, timeMS int64) *DFMessage {
+func NewDFMessage(fmt *Format, elements []interface{}, applyMultiplier bool, parent *Parent, timestamp float64, timeMS float64) *DFMessage {
     return &DFMessage{
         Fmt:             fmt,
         Elements:        elements,
