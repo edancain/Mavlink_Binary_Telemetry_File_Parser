@@ -8,12 +8,10 @@ type DFReaderClockUsec struct {
     *DFReaderClock
 }
 
-func NewDFReaderClockUsec() *DFReaderClockUsec {
-    clock := &DFReaderClockUsec{
-		DFReaderClock: NewDFReaderClock(),
-	}
+func NewDFReaderClock_usec() *DFReaderClockUsec {
+	clock := &DFReaderClockUsec{NewDFReaderClock()}
+	clock.timestamp = 0
 	return clock
-
 }
 
 func (clock *DFReaderClockUsec) FindTimeBase(gps struct{ GWk, GMS, TimeUS int64 }, firstUsStamp int64) {

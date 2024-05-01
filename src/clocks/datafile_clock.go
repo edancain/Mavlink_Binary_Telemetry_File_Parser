@@ -16,19 +16,19 @@ func NewDFReaderClock() *DFReaderClock {
 	}
 }
 
-func (clock *DFReaderClock) GpsTimeToTime(week, msec int) float64 {
+func (clock *DFReaderClock) gps_time_to_time(week, msec int) float64 {
 	epoch := 86400 * (10*365 + int((1980-1969)/4) + 1 + 6 - 2)
 	return float64(epoch + 86400*7*week + int(float64(msec)*1e-3) - 18)
 }
 
-func (clock *DFReaderClock) SetTimebase(base float64) {
+func (clock *DFReaderClock) set_timebase(base float64) {
 	clock.timebase = base
 }
 
-func (clock *DFReaderClock) MessageArrived(message *messages.DFMessage) {
+func (clock *DFReaderClock) message_arrived(message *messages.DFMessage) {
 	// Implement this method based on your requirements
 }
 
-func (clock *DFReaderClock) RewindEvent() {
+func (clock *DFReaderClock) rewind_event() {
 	// Implement this method based on your requirements
 }
