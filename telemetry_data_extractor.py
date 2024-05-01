@@ -58,6 +58,7 @@ class DataExtractor:
         dfreader._parse_next()
         msg = dfreader.messages
         count = 0
+        message_count = 0
         data = []  # Accumulator for GPS data
 
         # Get the values of the attributes
@@ -71,6 +72,7 @@ class DataExtractor:
 
         # Iterate over all messages
         while msg is not None:
+            message_count += 1
             if 'GPS' in msg:
                 # Get all GPS values
                 gps_values = msg['GPS']
@@ -98,6 +100,8 @@ class DataExtractor:
                 break
 
             msg = dfreader.messages
+
+        print(f"Total messages: {message_count}")
 
         if len(data) == 0:
             print("No GPS Data in File")

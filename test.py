@@ -1,5 +1,6 @@
 import sys
-from telemetry_data_extractor import DataExtractor
+#from telemetry_data_extractor import DataExtractor
+from telemetry_geography_extractor import DataExtractor
 from kml_creator import KMLCreator
 from kmz_writer import KMZWriter
 
@@ -7,6 +8,10 @@ from kmz_writer import KMZWriter
 # Use the classes
 filename = "10.bin"
 extractor = DataExtractor(filename)
+extractor.write_gps_data_to_csv("output.csv")
+
+
+sys.exit(0)
 extratorData = extractor.extract_data()
 if extratorData == None:
     sys.exit(0)

@@ -1,12 +1,4 @@
 #!/usr/bin/env python
-'''
-APM DataFlash log file reader
-
-Copyright Andrew Tridgell 2011
-Released under GNU GPL version 3 or later
-
-Partly based on SDLog2Parser by Anton Babushkin
-'''
 from __future__ import print_function
 from builtins import range
 from builtins import object
@@ -149,6 +141,13 @@ def null_term(string):
     if idx != -1:
         string = string[:idx]
     return string
+
+def DFReader_is_text_log(filename):
+    '''return True if a file appears to be a valid text log'''
+    with open(filename, 'r') as f:
+        ret = (f.read(8000).find('FMT,') != -1)
+
+    return ret
 
 
 class DFMessage(object):
@@ -791,7 +790,6 @@ class DFReader_binary(DFReader):
             m = self.recv_msg()
         return m._timestamp
 
-
     def skip_to_type(self, type):
         '''skip fwd to next msg matching given type set'''
 
@@ -965,14 +963,6 @@ class DFReader_binary(DFReader):
                                                  fmt.format.encode('ascii'),
                                                  ','.join(fmt.columns).encode('ascii')])
         return ret
-    
-
-def DFReader_is_text_log(filename):
-    '''return True if a file appears to be a valid text log'''
-    with open(filename, 'r') as f:
-        ret = (f.read(8000).find('FMT,') != -1)
-
-    return ret
 
 
 class DFReader_text(DFReader):
