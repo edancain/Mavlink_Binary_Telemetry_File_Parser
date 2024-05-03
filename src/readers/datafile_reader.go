@@ -8,55 +8,55 @@ import (
 type MavType int
 
 const (
-	MavTypeGeneric MavType = iota // 0
-	MavTypeFixedWing               // 1
-	MavTypeQuadrotor               // 2
-	MavTypeCoaxial                 // 3
-	MavTypeHelicopter              // 4
-	MavTypeAntennaTracker          // 5
-	MavTypeGCS                     // 6
-	MavTypeAirship                 // 7
-	MavTypeFreeBalloon             // 8
-	MavTypeRocket                  // 9
-	MavTypeGroundRover             // 10
-	MavTypeSurfaceBoat             // 11
-	MavTypeSubmarine               // 12
-	MavTypeHexarotor               // 13
-	MavTypeOctorotor               // 14
-	MavTypeTricopter               // 15
-	MavTypeFlappingWing            // 16
-	MavTypeKite                    // 17
-	MavTypeOnboardController       // 18
-	MavTypeVtolTailsitterDuorotor // 19
-	MavTypeVtolTailsitterQuadrotor // 20
-	MavTypeVtolTiltrotor           // 21
-	MavTypeVtolFixedrotor          // 22
-	MavTypeVtolTailsitter          // 23
-	MavTypeVtolTiltwing            // 24
-	MavTypeVtolReserved5           // 25
-	MavTypeGimbal                  // 26
-	MavTypeADSB                    // 27
-	MavTypeParafoil                // 28
-	MavTypeDodecarotor             // 29
-	MavTypeCamera                  // 30
-	MavTypeChargingStation         // 31
-	MavTypeFlarm                   // 32
-	MavTypeServo                   // 33
-	MavTypeODID                    // 34
-	MavTypeDecarotor               // 35
-	MavTypeBattery                 // 36
-	MavTypeParachute               // 37
-	MavTypeLog                     // 38
-	MavTypeOSD                     // 39
-	MavTypeIMU                     // 40
-	MavTypeGPS                     // 41
-	MavTypeWinch                   // 42
+	MavTypeGeneric                 MavType = iota // 0
+	MavTypeFixedWing                              // 1
+	MavTypeQuadrotor                              // 2
+	MavTypeCoaxial                                // 3
+	MavTypeHelicopter                             // 4
+	MavTypeAntennaTracker                         // 5
+	MavTypeGCS                                    // 6
+	MavTypeAirship                                // 7
+	MavTypeFreeBalloon                            // 8
+	MavTypeRocket                                 // 9
+	MavTypeGroundRover                            // 10
+	MavTypeSurfaceBoat                            // 11
+	MavTypeSubmarine                              // 12
+	MavTypeHexarotor                              // 13
+	MavTypeOctorotor                              // 14
+	MavTypeTricopter                              // 15
+	MavTypeFlappingWing                           // 16
+	MavTypeKite                                   // 17
+	MavTypeOnboardController                      // 18
+	MavTypeVtolTailsitterDuorotor                 // 19
+	MavTypeVtolTailsitterQuadrotor                // 20
+	MavTypeVtolTiltrotor                          // 21
+	MavTypeVtolFixedrotor                         // 22
+	MavTypeVtolTailsitter                         // 23
+	MavTypeVtolTiltwing                           // 24
+	MavTypeVtolReserved5                          // 25
+	MavTypeGimbal                                 // 26
+	MavTypeADSB                                   // 27
+	MavTypeParafoil                               // 28
+	MavTypeDodecarotor                            // 29
+	MavTypeCamera                                 // 30
+	MavTypeChargingStation                        // 31
+	MavTypeFlarm                                  // 32
+	MavTypeServo                                  // 33
+	MavTypeODID                                   // 34
+	MavTypeDecarotor                              // 35
+	MavTypeBattery                                // 36
+	MavTypeParachute                              // 37
+	MavTypeLog                                    // 38
+	MavTypeOSD                                    // 39
+	MavTypeIMU                                    // 40
+	MavTypeGPS                                    // 41
+	MavTypeWinch                                  // 42
 )
 
 type DFReader struct {
 	clock        clocks.DFReaderClock
 	timestamp    int64
-	mavType      MavType 
+	mavType      MavType
 	verbose      bool
 	params       map[string]interface{}
 	flightmodes  []interface{}
@@ -118,16 +118,16 @@ func (d *DFReader) initClockPX4(px4MsgTime, px4MsgGPS interface{}) bool {
 
 func (d *DFReader) initClockUsec() {
 	//doesn't get hit
-    clock := clocks.NewDFReaderClock_usec()
-    d.clock = clock
+	clock := clocks.NewDFReaderClock_usec()
+	d.clock = clock
 }
 
 func (d *DFReader) initClockMsec() {
-    clock := clocks.NewDFReaderClockMsec()
-    d.clock = clock
+	clock := clocks.NewDFReaderClockMsec()
+	d.clock = clock
 }
 
-func (d *DFReader) initClockGPSInterpolated(gpsClock *clocks.DFReaderClockGPSInterpolated) {	
+func (d *DFReader) initClockGPSInterpolated(gpsClock *clocks.DFReaderClockGPSInterpolated) {
 	//doesn't get hit
 	clock := clocks.NewDFReaderClockGPSInterpolated()
 	d.clock = clock
@@ -162,20 +162,20 @@ func (d *DFReader) initClock() {
 		}
 
 		if msgType == "GPS" || msgType == "GPS2" {
-            gps, ok := message.GetAttr("GPS").(*messages.GPS)
-            if ok {
-                if gps.TimeUS != 0 && gps.GWk != 0 {
+			gps, ok := message.GetAttr("GPS").(*messages.GPS)
+			if ok {
+				if gps.TimeUS != 0 && gps.GWk != 0 {
 
-                    d.initClockUsec()
+					d.initClockUsec()
 
-                    if !d.zeroTimeBase {
-                        //d.clock.FindTimeBase(gps, firstUsStamp)
-                    }
+					if !d.zeroTimeBase {
+						//d.clock.FindTimeBase(gps, firstUsStamp)
+					}
 
-                    haveGoodClock = true
-                    break
-                }
-            }
+					haveGoodClock = true
+					break
+				}
+			}
 
 			if gps.T != 0 && gps.Week != 0 {
 				if firstMsStamp == nil {
@@ -185,7 +185,7 @@ func (d *DFReader) initClock() {
 				d.initClockMsec()
 
 				if !d.zeroTimeBase {
-					d.clock.FindTimeBase(gps, firstMsStamp.(float64)) 
+					d.clock.FindTimeBase(gps, firstMsStamp.(float64))
 				}
 				haveGoodClock = true
 				break
@@ -193,7 +193,7 @@ func (d *DFReader) initClock() {
 			if message.GetAttr("GPSTime") != 0 {
 				px4MsgGPS = message
 			}
-			if message.GetAttr("Week") != 0 {  //could be gps.Week
+			if message.GetAttr("Week") != 0 { //could be gps.Week
 				/*if gpsInterpMsgGPS1 != nil && (gpsInterpMsgGPS1.TimeMS != message.TimeMS || gpsInterpMsgGPS1.getWeek() != message.getWeek()) {
 					d.initClockGPSInterpolated(gpsClock)
 					haveGoodClock = true
