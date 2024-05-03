@@ -19,10 +19,10 @@ func NewDFReaderClock_usec() *DFReaderClockUsec {
 	return clock
 }
 
-func (clock *DFReaderClockUsec) FindTimeBase(gps *messages.GPS, firstUsStamp float64) {
+func (clock *DFReaderClockUsec) FindTimeBase(gps *messages.GPS){//, firstUsStamp float64) {
     t := clock.gps_time_to_time(gps.GWk, gps.GMS)
     clock.SetTimebase(t - float64(gps.TimeUS)*0.000001)
-    clock.timestamp = clock.timebase + firstUsStamp*0.000001
+    //clock.timestamp = clock.timebase + firstUsStamp*0.000001
 }
 
 

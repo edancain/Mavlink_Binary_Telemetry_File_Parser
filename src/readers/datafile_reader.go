@@ -5,14 +5,62 @@ import (
 	"telemetry_parser/src/messages"
 )
 
+type MavType int
+
+const (
+	MavTypeGeneric MavType = iota // 0
+	MavTypeFixedWing               // 1
+	MavTypeQuadrotor               // 2
+	MavTypeCoaxial                 // 3
+	MavTypeHelicopter              // 4
+	MavTypeAntennaTracker          // 5
+	MavTypeGCS                     // 6
+	MavTypeAirship                 // 7
+	MavTypeFreeBalloon             // 8
+	MavTypeRocket                  // 9
+	MavTypeGroundRover             // 10
+	MavTypeSurfaceBoat             // 11
+	MavTypeSubmarine               // 12
+	MavTypeHexarotor               // 13
+	MavTypeOctorotor               // 14
+	MavTypeTricopter               // 15
+	MavTypeFlappingWing            // 16
+	MavTypeKite                    // 17
+	MavTypeOnboardController       // 18
+	MavTypeVtolTailsitterDuorotor // 19
+	MavTypeVtolTailsitterQuadrotor // 20
+	MavTypeVtolTiltrotor           // 21
+	MavTypeVtolFixedrotor          // 22
+	MavTypeVtolTailsitter          // 23
+	MavTypeVtolTiltwing            // 24
+	MavTypeVtolReserved5           // 25
+	MavTypeGimbal                  // 26
+	MavTypeADSB                    // 27
+	MavTypeParafoil                // 28
+	MavTypeDodecarotor             // 29
+	MavTypeCamera                  // 30
+	MavTypeChargingStation         // 31
+	MavTypeFlarm                   // 32
+	MavTypeServo                   // 33
+	MavTypeODID                    // 34
+	MavTypeDecarotor               // 35
+	MavTypeBattery                 // 36
+	MavTypeParachute               // 37
+	MavTypeLog                     // 38
+	MavTypeOSD                     // 39
+	MavTypeIMU                     // 40
+	MavTypeGPS                     // 41
+	MavTypeWinch                   // 42
+)
+
 type DFReader struct {
 	clock        clocks.DFReaderClock
 	timestamp    int64
-	mavType      interface{} // mavutil.mavlink.MAV_TYPE_FIXED_WING
+	mavType      MavType 
 	verbose      bool
 	params       map[string]interface{}
 	flightmodes  []interface{}
-	messages     map[string]interface{} //map[string]*messages.DFMessage
+	messages     map[string]*messages.DFMessage
 	percent      int
 	flightmode   string
 	zeroTimeBase bool
@@ -28,11 +76,11 @@ func NewDFReader() *DFReader {
 	return &DFReader{
 		clock:       nil,
 		timestamp:   0,
-		mavType:     nil,
+		mavType:     MavTypeGeneric,
 		verbose:     false,
 		params:      make(map[string]interface{}),
 		flightmodes: nil,
-		messages: map[string]interface{}{
+		messages: map[string]*messages.DFMessage{
 			"MAV":     nil,
 			"__MAV__": nil,
 		},
@@ -41,10 +89,11 @@ func NewDFReader() *DFReader {
 }
 
 func (d *DFReader) rewind() {
-	d.messages = map[string]interface{}{
+	d.messages = map[string]*messages.DFMessage{
 		"MAV":     nil,
 		"__MAV__": nil,
 	}
+
 	if d.flightmodes != nil && len(d.flightmodes) > 0 {
 		d.flightmodes = []interface{}{d.flightmodes[0]}
 	} else {
@@ -58,23 +107,11 @@ func (d *DFReader) rewind() {
 
 func (d *DFReader) initClockPX4(px4MsgTime, px4MsgGPS interface{}) bool {
 	//doesn't get hit
-	d.clock = clocks.NewDFReaderClockPX4()
+	var clock = clocks.NewDFReaderClockPX4()
+	d.clock = clock
 	if !d.zeroTimeBase {
-		if clock, ok := d.clock.(*clocks.DFReaderClockPX4); ok {
-			// Perform type assertion on px4MsgTime
-			if startTime, ok := px4MsgTime.(*messages.TimeMsg); ok {
-				clock.SetPX4Timebase(startTime)
-			} else {
-				return false
-			}
-
-			// Perform type assertion on px4MsgGPS
-			if gpsTime, ok := px4MsgGPS.(*messages.GPS); ok {
-				clock.FindTimeBase(gpsTime)
-			} else {
-				return false
-			}
-		}
+		d.clock.SetPX4Timebase(px4MsgTime)
+		d.clock.SetTimebase(px4MsgGPS)
 	}
 	return true
 }
@@ -197,7 +234,7 @@ func (d *DFReader) setTime(m *messages.DFMessage) {
 } // Add closing parenthesis and semicolon here
 
 func (d *DFReader) recvMsg() messages.DFMessage {
-	return *d.parseNext()
+	return *d.arseNext()
 }
 
 func (d *DFReader) addMsg(m *messages.DFMessage) {

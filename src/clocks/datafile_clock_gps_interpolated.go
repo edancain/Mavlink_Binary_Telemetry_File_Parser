@@ -27,7 +27,7 @@ func (clock *DFReaderClockGPSInterpolated) RewindEvent() {
 	clock.CountsSinceGPS = make(map[string]float64)
 }
 
-func (clock *DFReaderClockGPSInterpolated) FindTimeBase(gps *messages.GPS, firstUsStamp float64) {
+func (clock *DFReaderClockGPSInterpolated) FindTimeBase(gps *messages.GPS){//, firstUsStamp float64) {
 	t := clock.gps_time_to_time(gps.GWk, gps.TimeUS)
 	clock.SetTimebase(t - gps.T * 0.001)
 }
