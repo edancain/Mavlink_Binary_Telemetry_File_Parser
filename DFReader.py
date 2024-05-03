@@ -355,6 +355,7 @@ class DFReaderClock_msec(DFReaderClock):
         t = self._gpsTimeToTime(gps.Week, gps.TimeMS)
         self.set_timebase(t - gps.T*0.001)
         self.timestamp = self.timebase + first_ms_stamp*0.001
+        print(self.timestamp)
 
     def set_message_timestamp(self, m):
         if 'TimeMS' == m._fieldnames[0]:
@@ -592,6 +593,9 @@ class DFReader(object):
                 have_good_clock = True
                 break
 
+            #if first_ms_stamp is not None:
+            #    break
+
 #        print("clock is " + str(self.clock))
         if not have_good_clock:
             # we failed to find any GPS messages to set a time
@@ -680,7 +684,7 @@ class DFReader_binary(DFReader):
         for i in range(256):
             self.offsets.append([])
             self.counts.append(0)
-            
+
         fmt_type = 0x80
         fmtu_type = None
         ofs = 0

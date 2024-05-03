@@ -26,8 +26,8 @@ func (clock *DFReaderClockPX4) FindTimeBase(gps *messages.GPS) {
     clock.timebase = t - clock.px4Timebase
 }
 
-func (clock *DFReaderClockPX4) SetPX4Timebase(timeMsg *messages.TimeMsg) {
-	clock.px4Timebase = timeMsg.StartTime * 1.0e-6
+func (clock *DFReaderClockPX4) SetPX4Timebase(timeMsg *interface{}) {
+	//clock.px4Timebase = timeMsg.StartTime * 1.0e-6
 }
 
 func (clock *DFReaderClockPX4) SetMessageTimestamp(message *messages.DFMessage) {
@@ -37,8 +37,8 @@ func (clock *DFReaderClockPX4) SetMessageTimestamp(message *messages.DFMessage) 
 func (clock *DFReaderClockPX4) MessageArrived(message *messages.DFMessage) {
     messageType := message.GetType()
     if messageType == "TIME" && stringInSlice("StartTime", message.FieldNames){
-        timeMsg := &messages.TimeMsg{StartTime: message.GetAttr("StartTime").(float64)}
-		clock.SetPX4Timebase(timeMsg)
+        //timeMsg := &messages.DFMessage{StartTime: message.GetAttr("StartTime").(float64)}
+		//clock.SetPX4Timebase(timeMsg)
     }
 }
 

@@ -110,8 +110,8 @@ func (d *DFReader) initClockPX4(px4MsgTime, px4MsgGPS interface{}) bool {
 	var clock = clocks.NewDFReaderClockPX4()
 	d.clock = clock
 	if !d.zeroTimeBase {
-		d.clock.SetPX4Timebase(px4MsgTime)
-		d.clock.SetTimebase(px4MsgGPS)
+		//d.clock.SetPX4Timebase(px4MsgTime)
+		//d.clock.SetTimebase(px4MsgGPS)
 	}
 	return true
 }
@@ -169,7 +169,7 @@ func (d *DFReader) initClock() {
                     d.initClockUsec()
 
                     if !d.zeroTimeBase {
-                        d.clock.FindTimeBase(gps, firstUsStamp)
+                        //d.clock.FindTimeBase(gps, firstUsStamp)
                     }
 
                     haveGoodClock = true

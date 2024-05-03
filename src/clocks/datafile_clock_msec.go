@@ -16,10 +16,10 @@ func NewDFReaderClockMsec() *DFReaderClockMsec {
 }
 
 // FindTimeBase calculates the time basis for the log 
-func (clock *DFReaderClockMsec) FindTimeBase(gps *messages.GPS){//), firstMsStamp float64) {
+func (clock *DFReaderClockMsec) FindTimeBase(gps *messages.GPS, firstMsStamp int64) {
     t := clock.gps_time_to_time(gps.GWk, gps.TimeUS)
     clock.SetTimebase(t - gps.T * 0.001)
-    //clock.timestamp = clock.timebase + firstMsStamp * 0.001
+    clock.timestamp = clock.timebase + float64(firstMsStamp) * 0.001
 }
 
 func (clock *DFReaderClockMsec) SetMessageTimestamp(message *messages.DFMessage) {

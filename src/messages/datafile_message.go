@@ -19,9 +19,6 @@ type GPS struct {
 	GPSTime float64
 }
 
-type TimeMsg struct {
-	StartTime float64
-}
 
 type DFMessage struct {
     Fmt             *DFFormat
@@ -31,6 +28,7 @@ type DFMessage struct {
     Parent          *Parent
     TimeStamp       float64
     TimeMS          float64
+    StartTime float64
 }
 
 /*type Format struct {
@@ -59,6 +57,7 @@ func NewDFMessage(fmt *DFFormat, elements []interface{}, applyMultiplier bool, p
         Parent:          parent,
         TimeStamp:       timestamp,
         TimeMS:          timeMS,
+        StartTime: 0,
     }
 }
 
@@ -188,11 +187,11 @@ func (df *DFMessage) GetMsgBuf() []byte {
 	}
 
 	ret1 := []byte{0xA3, 0x95, byte(df.Fmt._type)}
-	ret2 := structPack(df.Fmt.msg_struct, values...)
+	ret2 := structPack(values...)
 	return append(ret1, ret2...)
 }
 
-func structPack(format string, values ...interface{}) []byte {
+func structPack(values ...interface{}) []byte {
 	var buf []byte
 	for _, v := range values {
 		switch vt := v.(type) {

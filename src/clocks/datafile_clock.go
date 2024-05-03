@@ -8,8 +8,6 @@ type DFReaderClock interface {
 	SetTimebase(base float64)
 	MessageArrived(message *messages.DFMessage)
 	RewindEvent()
-	SetMessageTimestamp(message *messages.DFMessage)
-	FindTimeBase(gps *messages.GPS) 
 }
 
 type DFReaderClockBase struct {
@@ -41,10 +39,10 @@ func (clock *DFReaderClockBase) RewindEvent() {
 	// Implement this method based on your requirements
 }
 
-func (clock *DFReaderClockBase) SetMessageTimestamp(message *messages.DFMessage) {
+func (clock *DFReaderClockBase) FindTimeBase(gps *messages.GPS, firstMsStamp int64) {
 	// Implement this method based on your requirements
 }
 
-func (clock *DFReaderClockBase) FindTimeBase(gps *messages.GPS) {
-	// Implement this method based on your requirements
-}
+
+
+
