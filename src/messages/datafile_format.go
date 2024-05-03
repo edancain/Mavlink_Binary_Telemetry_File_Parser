@@ -38,7 +38,7 @@ func u_ord(c byte) byte {
 }
 
 type DFFormat struct {
-    _type            string
+    _type          byte
     name           string
     len            int
     format         string
@@ -56,7 +56,7 @@ type DFFormat struct {
     instance_len   int
 }
 
-func NewDFFormat(typ, name string, flen int, format string, columns string, oldfmt *DFFormat) (*DFFormat, error) {
+func NewDFFormat(typ byte, name string, flen int, format string, columns string, oldfmt *DFFormat) (*DFFormat, error) {
     df := &DFFormat{
         _type:    typ,
         name:   nullTerm(name),

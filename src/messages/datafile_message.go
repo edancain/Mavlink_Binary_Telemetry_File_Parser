@@ -1,14 +1,12 @@
 package messages
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
 	"reflect"
 	"strings"
-	"unicode/utf8"
 )
 
 type GPS struct {
@@ -76,42 +74,46 @@ func (df *DFMessage) ToDict() map[string]interface{} {
     return d
 }
 
+func (df *DFMessage) ToMap() map[string]interface{} {
+	m := make(map[string]interface{})
+	m["mavpackettype"] = df.Fmt.name
+
+	for _, field := range df.FieldNames {
+		m[field] = df.GetAttr(field)
+	}
+
+	return m
+}
+
 func (df *DFMessage) GetAttr(field string) interface{} {
     i, ok := df.Fmt.colhash[field]
     if !ok {
         panic(errors.New("AttributeError: " + field))
     }
 
-    if df.Fmt.msg_fmts[i] == "Z" && df.Fmt.name == "FILE" {
+    if df.Fmt.msg_fmts[i] == 'Z' && df.Fmt.name == "FILE" {
         return df.Elements[i]
     }
 
-    var v = df.Elements[i]
-    if b, ok := v.([]byte); ok {
-		var s string
-		if utf8.Valid(b) {
-			s = string(b)
-		} else {
-			s = string(bytes.Runes(b))
+    if str, ok := df.Elements[i].(string); ok {
+		if df.Fmt.msg_fmts[i] != 'M' || df.ApplyMultiplier {
+			return str
 		}
-		v = s
+		return nil
 	}
 
-            if df.Fmt.format[i] == "a" {
-                return v
-            }
+    var v = df.Elements[i]
+    if df.Fmt.format[i] == 'a' {
+        return v
+    }
 
-            if fn, ok := df.Fmt.msg_types[i].(func(interface{}) interface{}); ok {
-                v = fn(v)
-            }
-
-            if df.Fmt.msg_types[i] == reflect.TypeOf("") {
-                v = nullTerm(v.(string))
-            }
-
-            if df.Fmt.msg_types[i] != nil && df.ApplyMultiplier {
-        		v = v.(float64) * df.Fmt.msg_types[i].(float64)
-        	}
+    if df.Fmt.msg_types[i] == reflect.TypeOf("").Elem() {
+        v = nullTerm(v.(string))
+    }
+    
+    if df.Fmt.msg_types[i] != nil && df.ApplyMultiplier {
+        v = v.(float64) * df.Fmt.msg_types[i].(float64)
+    }
 
     return v
 }
@@ -131,7 +133,7 @@ func (df *DFMessage) SetAttr(field string, value interface{}) {
     if field[0] >= 'A' && field[0] <= 'Z' && df.Fmt.colhash[field] != 0 {
         i := df.Fmt.colhash[field]
         if df.Fmt.msg_mults[i] != 0 && df.ApplyMultiplier {
-            value = value.(float64) / df.Fmt.msg_mults[i]
+            value = value.(float64) / float64(df.Fmt.msg_mults[i].(float64))
         }
         df.Elements[i] = value
     } 
@@ -163,35 +165,67 @@ func (df *DFMessage) String() string {
 }
 
 func (df *DFMessage) GetMsgBuf() []byte {
-    values := make([]interface{}, 0, len(df.Fmt.columns))
+    var values []interface{}
+	for i := range df.Fmt.columns {
+		if i >= len(df.Fmt.msg_mults) {
+			continue
+		}
+		mul := df.Fmt.msg_mults[i]
+		name := df.Fmt.columns[i]
+		if name == "Mode" && contains(df.Fmt.columns, "ModeNum") {
+			name = "ModeNum"
+		}
+		v := df.GetAttr(name)
+		switch vt := v.(type) {
+		case string:
+			v = []byte(vt)
+		}
 
-    for i := range df.Fmt.columns {
-        if i >= len(df.Fmt.msg_mults) {
-            continue
-        }
+		if mul != nil {
+			v = int(float64(v.(int)) / mul.(float64))
+		}
+		values = append(values, v)
+	}
 
-        mul := df.Fmt.msg_mults[i]
-        name := df.Fmt.columns[i]
-        if name == "Mode" && df.Fmt.columns[i] == "ModeNum" {
-            name = "ModeNum"
-        }
+	ret1 := []byte{0xA3, 0x95, byte(df.Fmt._type)}
+	ret2 := structPack(df.Fmt.msg_struct, values...)
+	return append(ret1, ret2...)
+}
 
-        v := df.GetAttr(name)
-        if mul != 0 {
-            v = int(math.Round(v.(float64) / mul))
-        }
+func structPack(format string, values ...interface{}) []byte {
+	var buf []byte
+	for _, v := range values {
+		switch vt := v.(type) {
+		case int:
+			buf = append(buf, uint8(vt))
+		case int32:
+			b := make([]byte, 4)
+			binary.LittleEndian.PutUint32(b, uint32(vt))
+			buf = append(buf, b...)
+		case int64:
+			b := make([]byte, 8)
+			binary.LittleEndian.PutUint64(b, uint64(vt))
+			buf = append(buf, b...)
+		case float64:
+			b := make([]byte, 8)
+			binary.LittleEndian.PutUint64(b, math.Float64bits(vt))
+			buf = append(buf, b...)
+		case []byte:
+			buf = append(buf, vt...)
+		default:
+			panic(fmt.Sprintf("unsupported type: %T", vt))
+		}
+	}
+	return buf
+}
 
-        values = append(values, v)
-    }
-
-    ret1 := []byte{0xA3, 0x95, df.Fmt.Type}
-    ret2 := make([]byte, len(values)*8)
-    for i, v := range values {
-        val := uint64(v.(float64))
-        binary.BigEndian.PutUint64(ret2[i*8:], val)
-    }
-
-    return append(ret1, ret2...)
+func contains(arr []string, str string) bool {
+	for _, v := range arr {
+		if v == str {
+			return true
+		}
+	}
+	return false
 }
 
 func (df *DFMessage) GetFieldNames() []string {
@@ -199,11 +233,11 @@ func (df *DFMessage) GetFieldNames() []string {
 }
 
 func (df *DFMessage) GetItem(key string) (*DFMessage, error) {
-    if df.Fmt.InstanceField == "" {
+    if *df.Fmt.instance_field == "" {
         return nil, errors.New("IndexError")
     }
 
-    k := fmt.Sprintf("%s[%s]", df.Fmt.Name, key)
+    k := fmt.Sprintf("%s[%s]", df.Fmt.name, key)
     if _, ok := df.Parent.Messages[k]; !ok {
         return nil, errors.New("IndexError")
     }
