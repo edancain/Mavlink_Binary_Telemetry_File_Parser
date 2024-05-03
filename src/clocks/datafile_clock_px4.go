@@ -7,6 +7,12 @@ type DFReaderClockPX4 struct {
 	px4Timebase float64
 }
 
+
+
+//doesn't get hit
+
+
+
 func NewDFReaderClockPX4() *DFReaderClockPX4 {
 	clock := &DFReaderClockPX4{
 		DFReaderClockBase: NewDFReaderClockBase(),
@@ -44,3 +50,13 @@ func stringInSlice(str string, slice []string) bool {
 	}
 	return false
 }
+
+func (clock *DFReaderClockPX4) SetTimebase(base float64) {
+	clock.timebase = base
+}
+
+func (clock *DFReaderClockPX4) RewindEvent() {
+	// Implement this method based on your requirements
+}
+
+

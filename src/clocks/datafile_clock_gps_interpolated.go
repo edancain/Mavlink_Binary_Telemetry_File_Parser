@@ -21,12 +21,18 @@ func NewDFReaderClockGPSInterpolated() *DFReaderClockGPSInterpolated {
 	return clock
 }
 
+//doesn't get hit
 func (clock *DFReaderClockGPSInterpolated) RewindEvent() {
 	clock.Counts = make(map[string]float64)
 	clock.CountsSinceGPS = make(map[string]float64)
 }
 
-// MessageArrived handles the arrival of a message
+func (clock *DFReaderClockGPSInterpolated) FindTimeBase(gps *messages.GPS, firstUsStamp float64) {
+	t := clock.gps_time_to_time(gps.GWk, gps.TimeUS)
+	clock.SetTimebase(t - gps.T * 0.001)
+}
+
+//doesn't get hit
 func (clock *DFReaderClockGPSInterpolated) MessageArrived(message *messages.DFMessage) {
 	msgType := message.GetType()
 	if _, ok := clock.Counts[msgType]; !ok {
@@ -46,6 +52,7 @@ func (clock *DFReaderClockGPSInterpolated) MessageArrived(message *messages.DFMe
 	}
 }
 
+//doesn't get hit
 func (clock *DFReaderClockGPSInterpolated) GPSMessageArrived(message *messages.DFMessage) {
     gpsWeek := message.GetAttr("Week").(int)
 	gpsTimeMs := message.GetAttr("TimeMS").(int)
@@ -72,6 +79,7 @@ func (clock *DFReaderClockGPSInterpolated) GPSMessageArrived(message *messages.D
     clock.CountsSinceGPS = make(map[string]float64)
 }
 
+//doesn't get hit
 func (clock *DFReaderClockGPSInterpolated) SetMessageTimestamp(message *messages.DFMessage) {
     rate := clock.MsgRate[message.Fmt.Name]
     if int(rate) == 0 {
@@ -81,3 +89,6 @@ func (clock *DFReaderClockGPSInterpolated) SetMessageTimestamp(message *messages
     message.TimeStamp = clock.timebase + count/rate
 }
 
+func (clock *DFReaderClockGPSInterpolated) SetTimebase(base float64) {
+	clock.timebase = base
+}

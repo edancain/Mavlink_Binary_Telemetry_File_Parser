@@ -8,6 +8,9 @@ type DFReaderClockUsec struct {
     *DFReaderClockBase
 }
 
+
+//doesn't get hit
+
 func NewDFReaderClock_usec() *DFReaderClockUsec {
 	clock := &DFReaderClockUsec{
         DFReaderClockBase: NewDFReaderClockBase(),
@@ -33,3 +36,17 @@ func (clock *DFReaderClockUsec) SetMessageTimestamp(message *messages.DFMessage)
     }
     clock.timestamp = message.TimeStamp
 }
+
+
+func (clock *DFReaderClockUsec) SetTimebase(base float64) {
+	clock.timebase = base
+}
+
+func (clock *DFReaderClockUsec) MessageArrived(message *messages.DFMessage) {
+	// Implement this method based on your requirements
+}
+
+func (clock *DFReaderClockUsec) RewindEvent() {
+	// Implement this method based on your requirements
+}
+

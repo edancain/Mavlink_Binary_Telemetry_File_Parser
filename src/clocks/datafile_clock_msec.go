@@ -2,6 +2,8 @@ package clocks
 
 import "telemetry_parser/src/messages"
 
+//DFReaderClock_msec - a format where many messages have TimeMS in
+//their formats, and GPS messages have a "T" field giving msecs
 type DFReaderClockMsec struct {
     *DFReaderClockBase
 }
@@ -21,6 +23,7 @@ func (clock *DFReaderClockMsec) FindTimeBase(gps *messages.GPS, firstMsStamp flo
 }
 
 func (clock *DFReaderClockMsec) SetMessageTimestamp(message *messages.DFMessage) {
+    //doesn't get hit
     if message.FieldNames[0] == "TimeMS" {
         message.TimeStamp = clock.timebase + message.TimeMS * 0.001
     } else if message.GetType() == "GPS" || message.GetType() == "GPS2" {
@@ -36,3 +39,16 @@ func (clock *DFReaderClockMsec) SetMessageTimestamp(message *messages.DFMessage)
    }
    clock.timestamp = message.TimeStamp
 }
+
+func (clock *DFReaderClockMsec) SetTimebase(base float64) {
+	clock.timebase = base
+}
+
+func (clock *DFReaderClockMsec) MessageArrived(message *messages.DFMessage) {
+	// Implement this method based on your requirements
+}
+
+func (clock *DFReaderClockMsec) RewindEvent() {
+	// Implement this method based on your requirements
+}
+

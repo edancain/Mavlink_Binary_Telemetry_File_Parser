@@ -676,9 +676,11 @@ class DFReader_binary(DFReader):
         self.name_to_id = {}
         self.id_to_name = {}
         type_instances = {}
+
         for i in range(256):
             self.offsets.append([])
             self.counts.append(0)
+            
         fmt_type = 0x80
         fmtu_type = None
         ofs = 0
