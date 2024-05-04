@@ -1,7 +1,7 @@
 package readers
 
 import (
-	"TelemetryParser/telemetry_parser/src/messages"
+	"github.com/edancain/telemetry_parser/telemetry_parser/src/messages"
 	"encoding/binary"
 	"fmt"
 	"os"

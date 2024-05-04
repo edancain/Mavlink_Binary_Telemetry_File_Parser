@@ -1,7 +1,7 @@
 package messages
 
 import (
-	"TelemetryParser/telemetry_parser/src/readers"
+	"github.com/edancain/telemetry_parser/telemetry_parser/src/readers"
 	"encoding/binary"
 	"errors"
 	"fmt"

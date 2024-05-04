@@ -1,8 +1,6 @@
 package readers
 
 import (
-	"src/messages"
-	"src/clocks"
 )
 
 type MavType int
@@ -164,7 +162,7 @@ func (d *DFReader) initClock() {
 				d.initClockMsec()
 
 				if !d.zeroTimeBase {
-					d.clock.FindTimeBase(messages.GPS{}, firstMsStamp.(int64))
+					d.clock.FindTimeBase(&messages.GPS{}, firstMsStamp.(int64))
 				}
 				haveGoodClock = true
 				break

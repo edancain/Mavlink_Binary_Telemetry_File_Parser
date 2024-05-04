@@ -1,6 +1,6 @@
 package clocks
 
-import "github.com/edancain/telemetry_parser/src/messages"
+import "github.com/edancain/telemetry_parser/telemetry_parser/src/messages"
 
 
 type DFReaderClock interface {
