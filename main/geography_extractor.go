@@ -4,7 +4,7 @@ import (
     "fmt"
     "os"
     "strings"
-    "telemetry_parser/src"
+    "github.com/edancain/telemetry_parser/src"
 )
 
 type GPSValues struct {
