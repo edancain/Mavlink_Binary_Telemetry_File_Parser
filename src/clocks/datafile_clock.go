@@ -1,5 +1,7 @@
 package clocks
 
+import "github.com/edancain/telemetry_parser/src/messages"
+
 
 type DFReaderClock interface {
 	SetTimebase(base float64)

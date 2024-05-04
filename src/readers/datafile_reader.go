@@ -1,5 +1,10 @@
 package readers
 
+import (
+	"src/messages"
+	"src/clocks"
+)
+
 type MavType int
 
 const (
