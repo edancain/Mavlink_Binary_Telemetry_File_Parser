@@ -4,6 +4,7 @@ import (
     "fmt"
     "os"
     "strings"
+    "telemetry_parser/src"
 )
 
 type GPSValues struct {
@@ -13,14 +14,6 @@ type GPSValues struct {
     // Add other fields as per your requirement
 }
 
-type DFReader struct {
-    messages map[string]GPSValues
-    percent  float64
-}
-
-func (d *DFReader) parseNext() {
-    // Implement this method based on your requirement
-}
 
 func extractData(filename string) ([]map[string]interface{}, error) {
     _, err := os.Stat(filename)
@@ -29,15 +22,20 @@ func extractData(filename string) ([]map[string]interface{}, error) {
         return nil, err
     }
 
-    var dfreader DFReader
+    var dfreader *src.DFReaderBinary
+
     if strings.HasSuffix(filename, ".log") {
         // dfreader = DFReader_text(filename)
-	} else {
-        // dfreader = DFReader_binary(filename)
+    } else {
+        dfreader, err = src.NewDFReaderBinary(filename, false, nil)
+        if err != nil {
+            fmt.Println("Failed to create DFReaderBinary:", err)
+            return nil, err
+        }
     }
 
     if _, ok := dfreader.messages["GPS"]; !ok {
-        fmt.Println("no GPS data")
+        fmt.Println("No GPS data")
         return nil, fmt.Errorf("no GPS data")
     }
 
