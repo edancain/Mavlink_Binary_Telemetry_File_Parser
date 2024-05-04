@@ -1,25 +1,28 @@
 package readers
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
+	"strings"
 	"syscall"
 	"telemetry_parser/src/messages"
 )
 
 type DFReaderBinary struct {
+    DFReader
     fileHandle *os.File
-    dataLen    int
     dataMap    []byte
     HEAD1      byte
     HEAD2      byte
     unpackers  map[byte]func([]byte) ([]interface{}, error)
     formats    map[byte]*messages.DFFormat
 	zeroTimeBase bool
+    verbose    bool
 	prevType     byte
-	offset       int
-	remaining    int
-	offsets    [][]int
+	offset       int64
+	remaining    int64
+	offsets    [][]int64
 	typeNums   []byte
 	timestamp  int
 	counts     []int
@@ -31,10 +34,25 @@ type DFReaderBinary struct {
 
 func NewDFReaderBinary(filename string, zeroTimeBase bool, progressCallback func(int)) (*DFReaderBinary, error) {
     reader := &DFReaderBinary{
+        DFReader: DFReader{
+            clock:        nil,
+        },
 		HEAD1:        0xA3,
 		HEAD2:        0x95,
 		unpackers:    make(map[byte]func([]byte) ([]interface{}, error)),
-		formats:      make(map[byte]*messages.DFFormat),
+        verbose:     false,
+        offset:      0,
+        remaining:  0,
+        typeNums:   nil,
+        formats: map[byte]*messages.DFFormat{
+            0x80: &messages.DFFormat{
+                Typ:    0x80,
+                Name:    "FMT",
+                Len:     89,
+                Format:  "BBnNZ",
+                Columns: []string{"Type", "Length", "Name", "Format", "Columns"},
+            },
+        },
 		zeroTimeBase: zeroTimeBase,
 		prevType:     0,
 	}
@@ -50,19 +68,14 @@ func NewDFReaderBinary(filename string, zeroTimeBase bool, progressCallback func
         return nil, err
     }
 
-    reader.dataLen = int(fileInfo.Size())
+    reader.dataLen = fileInfo.Size()
 
     // Read the whole file into memory
-	reader.dataMap, err = syscall.Mmap(int(reader.fileHandle.Fd()), 0, reader.dataLen, syscall.PROT_READ, syscall.MAP_PRIVATE)
+	reader.dataMap, err = syscall.Mmap(int(reader.fileHandle.Fd()), 0, int(reader.dataLen), syscall.PROT_READ, syscall.MAP_PRIVATE)
     if err != nil {
         panic(err)
     }
-    /*if platform == "windows" {
-        err = syscall.UnmapViewOfFile(uintptr(unsafe.Pointer(&reader.dataMap[0])))
-        if err != nil {
-            panic(err)
-        }
-    }*/
+
     reader.init(progressCallback)
     return reader, nil
 }
@@ -72,9 +85,9 @@ func (reader *DFReaderBinary) init(progressCallback func(int)) {
 	reader.offset = 0
 	reader.remaining = reader.dataLen
 	reader.prevType = 0
-	//reader.initClock()
+	reader.initClock()
 	reader.prevType = 0
-	reader.Rewind()
+	reader._rewind()
 	reader.initArrays(progressCallback)
 }
 
@@ -90,28 +103,28 @@ func (reader *DFReaderBinary) Rewind() {
 }
 
 func (reader *DFReaderBinary) initArrays(progressCallback func(int)) {
-    reader.offsets = make([][]int, 256)
+    reader.offsets = make([][]int64, 256)
     reader.counts = make([]int, 256)
     reader._count = 0
     reader.nameToID = make(map[string]byte)
     reader.idToName = make(map[byte]string)
-    typeInstances := make(map[byte]map[string]bool)
+    typeInstances := make(map[byte]map[string]struct{})
 
     for i := 0; i < 256; i++ {
-		reader.offsets[i] = []int{}
+		reader.offsets[i] = []int64{}
 		reader.counts[i] = 0
 	}
 
-    fmtType := 0x80
+    fmtType := byte(0x80)
     fmtuType := byte(0)
 
-    ofs := 0
+    ofs := int64(0)
     pct := 0
 
     HEAD1 := reader.HEAD1
     HEAD2 := reader.HEAD2
 
-    lengths := make([]int, 256)
+    lengths := make([]int64, 256)
     for i := range lengths {
         lengths[i] = -1
     }
@@ -133,29 +146,38 @@ func (reader *DFReaderBinary) initArrays(progressCallback func(int)) {
 
         reader.offsets[mtype] = append(reader.offsets[mtype], ofs)
 
-        if reader.formats[mtype] == nil {
+        if lengths[mtype] == -1 {
             if _, ok := reader.formats[mtype]; !ok {
-                if reader.dataLen-ofs >= 528 || reader.dataLen < 528 {
+                if reader.dataLen - ofs >= 528 || reader.dataLen < 528 {
                     fmt.Fprintf(os.Stderr, "unknown msg type 0x%02x (%d) at %d\n", mtype, mtype, ofs)
                 }
                 break
             }
 
             reader.offset = ofs
-
             reader.parseNext()
-            fmt := reader.formats[mtype]
-            lengths[mtype] = fmt.len
-        } else if fmt.instanceField != nil {
-            fmt := reader.formats[mtype]
-            idata := reader.dataMap[ofs+3+fmt.instanceOfs : ofs+3+fmt.instanceOfs+fmt.instanceLen]
-            if _, ok := typeInstances[mtype]; !ok {
-                typeInstances[mtype] = make(map[string]struct{})
+
+            dfmt, ok := reader.formats[mtype]
+            if !ok {
+                // Handle the case when the key is not found
+                //fmt.Fprintf("Key %x not found in formats\n", mtype)
+                continue
             }
-            if _, ok := typeInstances[mtype][idata]; !ok {
-                typeInstances[mtype][idata] = struct{}{}
+            lengths[mtype] = dfmt.Len
+
+        } else if reader.formats[mtype].InstanceField != nil {
+            dfmt := reader.formats[mtype]
+            idata := reader.dataMap[ofs+3+int64(dfmt.InstanceOfs) : ofs+3+int64(dfmt.InstanceOfs)+int64(dfmt.InstanceLen)]
+
+            if _, ok := typeInstances[mtype]; !ok {
+                typeInstances[mtype] = make(map[string]struct{})  
+            }
+
+            idataStr := string(idata)
+            if _, ok := typeInstances[mtype][idataStr]; !ok {
+                typeInstances[mtype][idataStr] = struct{}{}
                 reader.offset = ofs
-                parseNext()
+                reader.parseNext()
             }
         }
 
@@ -164,49 +186,66 @@ func (reader *DFReaderBinary) initArrays(progressCallback func(int)) {
 
         if mtype == fmtType {
             body := reader.dataMap[ofs+3 : ofs+mlen]
-            if len(body)+3 < mlen {
+            if len(body)+3 < int(mlen) {
                 break
             }
-            fmt := reader.formats[mtype]
-            elements := structUnpack(fmt.msgStruct, body)
-            ftype := elements[0]
-            mfmt := DFFormat{
-                ftype:     ftype,
-                name:      nullTerm(elements[2]),
-                len:       elements[1],
-                format:    nullTerm(elements[3]),
-                columns:   nullTerm(elements[4]),
-                oldFormat: reader.formats[ftype],
+
+            //dfmt := reader.formats[mtype]
+            elements, err := reader.unpackers[mtype](body)
+            if err != nil {
+                // Handle the error
+                continue
             }
+
+            ftype := byte(elements[0].(uint8))
+            name := nullTerm(string(elements[2].([]byte)))
+            length := int64(elements[1].(uint8))
+            format := nullTerm(string(elements[3].([]byte)))
+            columns := nullTerm(string(elements[4].([]byte)))
+
+            mfmt, err := messages.NewDFFormat(ftype, name, length, format, columns, reader.formats[ftype])
+            if err != nil {
+                // Handle the error
+                continue
+            }
+
             reader.formats[ftype] = mfmt
-            reader.nameToID[mfmt.name] = mfmt.ftype
-            reader.idToName[mfmt.ftype] = mfmt.name
-            if mfmt.name == "FMTU" {
-                fmtuType = &mfmt.ftype
+            reader.nameToID[mfmt.Name] = mfmt.Typ
+            reader.idToName[mfmt.Typ] = mfmt.Name
+            if mfmt.Name == "FMTU" {
+                fmtuType = mfmt.Typ
             }
         }
 
-        if fmtuType != nil && mtype == *fmtuType {
-            fmt := reader.formats[mtype]
+        if fmtuType != 0 && mtype == fmtuType {
+            dfmt := reader.formats[mtype]
             body := reader.dataMap[ofs+3 : ofs+mlen]
-            if len(body)+3 < mlen {
+            if len(body)+3 < int(mlen) {
                 break
             }
-            elements := structUnpack(fmt.msgStruct, body)
-            ftype := int(elements[1])
-            if fmt2, ok := reader.formats[ftype]; ok {
-                if _, ok := fmt.colHash["UnitIds"]; ok {
-                    fmt2.setUnitIDs(nullTerm(elements[fmt.colHash["UnitIds"]]))
+
+            elements, err := reader.unpackers[mtype](body)
+            if err != nil {
+                // Handle the error
+                continue
+            }
+            ftype := byte(elements[1].(uint8))
+            if _, ok := reader.formats[ftype]; ok {
+                fmt2 := reader.formats[ftype]
+                if _, colExists := dfmt.Colhash["UnitIds"]; colExists {
+                    unitIds := nullTerm(string(elements[dfmt.Colhash["UnitIds"]].([]byte)))
+                    fmt2.SetUnitIds(&unitIds)
                 }
-                if _, ok := fmt.colHash["MultIds"]; ok {
-                    fmt2.setMultIDs(nullTerm(elements[fmt.colHash["MultIds"]]))
+                if _, colExists := dfmt.Colhash["MultIds"]; colExists {
+                    multIds := nullTerm(string(elements[dfmt.Colhash["MultIds"]].([]byte)))
+                    fmt2.SetMultIds(&multIds)
                 }
             }
         }
 
         ofs += mlen
         if progressCallback != nil {
-            newPct := (100 * ofs) / d.dataLen
+            newPct := (100 * int(ofs)) / int(reader.dataLen)
             if newPct != pct {
                 progressCallback(newPct)
                 pct = newPct
@@ -220,208 +259,245 @@ func (reader *DFReaderBinary) initArrays(progressCallback func(int)) {
     reader.offset = 0
 }
 
-func (d *DFReaderBinary) last_timestamp() (int, error) {
-    highest_offset := 0
-    second_highest_offset := 0
-    for i := 0; i < 256; i++ {
-        if d.counts[i] == -1 {
-            continue
-        }
-        if len(d.offsets[i]) == 0 {
-            continue
-        }
-        ofs := d.offsets[i][len(d.offsets[i])-1]
-        if ofs > highest_offset {
-            second_highest_offset = highest_offset
-            highest_offset = ofs
-        } else if ofs > second_highest_offset {
-            second_highest_offset = ofs
-        }
+func nullTerm(s string) string {
+    idx := strings.Index(s, "\x00")
+    if idx != -1 {
+        s = s[:idx]
     }
-    d.offset = highest_offset
-    m, err := d.recv_msg()
-    if err != nil {
-        return 0, err
-    }
-    if m == nil {
-        d.offset = second_highest_offset
-        m, err = d.recv_msg()
-        if err != nil {
-            return 0, err
-        }
-    }
-    return m._timestamp, nil
+    return s
 }
 
-func (d *DFReaderBinary) skipToType(typeSet map[string]bool) {
-    if d.typeNums == nil {
-        typeSet["MODE"] = true
-        typeSet["MSG"] = true
-        typeSet["PARM"] = true
-        typeSet["STAT"] = true
-        typeSet["ORGN"] = true
-        typeSet["VER"] = true
-        d.indexes = []int{}
-        d.typeNums = []int{}
+func (d *DFReaderBinary) recvMsg() messages.DFMessage {
+	return *d.parseNext()
+}
+
+func (reader *DFReaderBinary) SkipToType(typeSet map[string]struct{}) {
+    if reader.typeNums == nil {
+        typeSet["MODE"] = struct{}{}
+        typeSet["MSG"] = struct{}{}
+        typeSet["PARM"] = struct{}{}
+        typeSet["STAT"] = struct{}{}
+        typeSet["ORGN"] = struct{}{}
+        typeSet["VER"] = struct{}{}
+        reader.indexes = make([]int, 0)
+        reader.typeNums = make([]byte, 0)
         for t := range typeSet {
-            id, ok := d.nameToID[t]
-            if !ok {
-                continue
+            if id, ok := reader.nameToID[t]; ok {
+                reader.typeNums = append(reader.typeNums, id)
+                reader.indexes = append(reader.indexes, 0)
             }
-            d.typeNums = append(d.typeNums, id)
-            d.indexes = append(d.indexes, 0)
         }
     }
     smallestIndex := -1
-    smallestOffset := d.dataLen
-    for i := range d.typeNums {
-        mtype := d.typeNums[i]
-        if d.indexes[i] >= d.counts[mtype] {
+    smallestOffset := reader.dataLen
+    for i := range reader.typeNums {
+        mtype := reader.typeNums[i]
+        if reader.indexes[i] >= reader.counts[mtype] {
             continue
         }
-        ofs := d.offsets[mtype][d.indexes[i]]
+        ofs := reader.offsets[mtype][reader.indexes[i]]
         if ofs < smallestOffset {
             smallestOffset = ofs
             smallestIndex = i
         }
     }
     if smallestIndex >= 0 {
-        d.indexes[smallestIndex]++
-        d.offset = smallestOffset
+        reader.indexes[smallestIndex]++
+        reader.offset = smallestOffset
     }
 }
 
 func (reader *DFReaderBinary) parseNext() *messages.DFMessage {
-    var skipType []byte
-    skipStart := 0
-
+    skipType := [3]byte{}
+    skipStart := int64(0)
+    var msgType byte
     for {
-        if reader.dataLen - reader.offset < 3 {
+        if reader.dataLen-reader.offset < 3 {
             return nil
         }
 
         hdr := reader.dataMap[reader.offset : reader.offset+3]
         if hdr[0] == reader.HEAD1 && hdr[1] == reader.HEAD2 {
-            if skipType != nil {
+            if skipType != [3]byte{} {
                 if reader.remaining >= 528 {
                     skipBytes := reader.offset - skipStart
-                    fmt.Printf("Skipped %d bad bytes in log at offset %d, type=%v (prev=%d)\n",
-                        skipBytes, skipStart, skipType, d.prevType)
-                
-                skipType = nil
+                    fmt.Fprintf(os.Stderr, "Skipped %d bad bytes in log at offset %d, type=%v (prev=%d)\n", skipBytes, skipStart, skipType, reader.prevType)
                 }
-                msgType := hdr[2]
-                if _, ok := reader.formats[msgType]; ok {
-                    reader.prevType = msgType
-                    break
-                }
-            }else {
-				skipType = []byte{hdr[0], hdr[1], hdr[2]}
-				skipStart = reader.offset
-			}
-		 }else {
-			if skipType == nil {
-				skipType = []byte{hdr[0], hdr[1], hdr[2]}
-				skipStart = reader.offset
-			}
-		}
-		reader.offset++
-		reader.remaining--
+                skipType = [3]byte{}
+            }
+            msgType := hdr[2]
+            if _, ok := reader.formats[msgType]; ok {
+                reader.prevType = msgType
+                break
+            }
+            if skipType == [3]byte{} {
+                skipType = [3]byte{hdr[0], hdr[1], hdr[2]}
+                skipStart = reader.offset
+            }
+            reader.offset++
+            reader.remaining--
+            continue
+        }
     }
-
+        
     reader.offset += 3
     reader.remaining = reader.dataLen - reader.offset
 
-    fmt := reader.formats[reader.prevType]
-	if reader.remaining < 0 { //len(fmt) {
-		//if reader.Verbose {
-		//	fmt.Fprintf(os.Stderr, "out of data\n")
-		//}
-		return nil
-	}
+    dfmt, ok := reader.formats[msgType]
+    if !ok {
+        return reader.parseNext()
+    }
 
-    body := reader.dataMap[reader.offset : reader.offset] // + fmt.len-3]
-    var elements []interface{}
-    var err error
-
-    elements, err = reader.unpackers[reader.prevType].Unpack(body)
-
-	if _, ok := reader.unpackers[reader.prevType]; !ok {
-		//reader.unpackers[reader.prevType] = struct(fmt.msgStruct).Unpack
-	}
-
-	elements, err = reader.unpackers[reader.prevType].Unpack(body)
-
-	if err != nil {
-		if reader.remaining < 528 {
-			return nil
-		}
-		//fmt.printf(os.Stderr, "Failed to parse %s/%s with len %d (remaining %d)\n",
-		//	fmt.name, fmt.msgStruct, len(body), reader.remaining)
-		return reader.parseNext()
-	}
-
-    name := fmt.name
-	for _, aIndex := range fmt.aIndexes {
-		val := elements[aIndex].([]byte)
-		arr := array.NewIntSlice(val)
-		elements[aIndex] = arr
-	}
+    if reader.remaining < dfmt.Len-3 {
+        if reader.verbose {
+            fmt.Println("out of data")
+        }
+        return nil
+    }
+        
+    body := reader.dataMap[reader.offset : reader.offset+dfmt.Len-3]
+        
+    elements, err := reader.unpackers[msgType](body)
+    if err != nil {
+        fmt.Println(err)
+        if reader.remaining < 528 {
+            return nil
+        }
+        fmt.Fprintf(os.Stderr, "Failed to parse %s/%s with len %d (remaining %d)\n", dfmt.Name, dfmt.MsgStruct, len(body), reader.remaining)
+    }
+        
+    if elements == nil {
+        return reader.parseNext()
+    }
+        
+    name := dfmt.Name
+    for _, aIndex := range dfmt.AIndexes {
+        if aIndex < len(elements) {
+            data, ok := elements[aIndex].([]byte)
+            if ok {
+                elements[aIndex] = bytesToInt16Array(data)
+            } else {
+                fmt.Fprintf(os.Stderr, "Failed to transform array: %v\n", elements[aIndex])
+            }
+        }
+    }
 
     if name == "FMT" {
-        // add to formats
-        // TODO: handle FMT case
+        //ftype := byte(elements[0].(uint8))
+        ftype, ok := elements[0].(byte)
+        if !ok {
+            return reader.parseNext()
+        }
+        
+        name := nullTerm(string(elements[2].([]byte)))
+        length := int64(elements[1].(uint8))
+        format := nullTerm(string(elements[3].([]byte)))
+        columns := nullTerm(string(elements[4].([]byte)))
+
+        mfmt, err := messages.NewDFFormat(ftype, name, length, format, columns, reader.formats[ftype])
+        if err != nil {
+            return reader.parseNext()
+        }
+
+        reader.formats[ftype] = mfmt
     }
-    reader.offset += fmt.len - 3
+
+    reader.offset += int64(dfmt.Len) - 3
     reader.remaining = reader.dataLen - reader.offset
-    m := messages.DFMessage{fmt, elements}
+    m := messages.NewDFMessage(dfmt, elements, true, reader)
+
     if m.Fmt.Name == "FMTU" {
-        // add to units information
-        // TODO: handle FMTU case
+        FmtType := int(elements[0].(uint8))
+        UnitIds := elements[1].(string)
+        MultIds := elements[2].(string)
+        if fmt, ok := reader.formats[byte(FmtType)]; ok {
+            fmt.SetUnitIds(&UnitIds)
+            fmt.SetMultIds(&MultIds)
+        }
     }
-    // TODO: handle _add_msg(m)
-    reader.percent = 100.0 * (float64(reader.offset) / float64(reader.dataLen))
-    return &m
+
+    err := reader.addMsg(m)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "bad msg at offset %d: %v\n", reader.offset, err)
+    }
+
+    reader.percent = 100.0 * float64(reader.offset) / float64(reader.dataLen)
+
+    return m
 }
 
-func (d *DFReader) findUnusedFormat() int {
+func bytesToInt16Array(b []byte) []int16 {
+    if len(b)%2 != 0 {
+        return nil
+    }
+    arr := make([]int16, 0, len(b)/2)
+    for i := 0; i < len(b); i += 2 {
+        num := int16(binary.LittleEndian.Uint16(b[i : i+2]))
+        arr = append(arr, num)
+    }
+    return arr
+}
+
+func (reader *DFReaderBinary) FindUnusedFormat() byte {
     for i := 254; i > 1; i-- {
-        if _, ok := d.formats[i]; !ok {
-            return i
+        if _, ok := reader.formats[byte(i)]; !ok {
+            return byte(i)
         }
     }
     return 0
 }
 
-func (d *DFReader) addFormat(fmt *messages.DFFormat) *messages.DFFormat {
-    newType := d.findUnusedFormat()
+func (reader *DFReaderBinary) AddFormat(fmt *messages.DFFormat) *messages.DFFormat {
+    newType := reader.FindUnusedFormat()
     if newType == 0 {
         return nil
     }
-    fmt.Type = newType
-    d.formats[newType] = fmt
-    return &fmt
+    fmt.Typ = newType
+    reader.formats[newType] = fmt
+    return fmt
 }
 
-func (d *DFReader) makeMsgbuf(fmt *messages.DFFormat, values []interface{}) []byte {
-    buf := new(bytes.Buffer)
-    binary.Write(buf, binary.LittleEndian, []byte{0xA3, 0x95, byte(fmt.Type)})
-    for _, v := range values {
-        binary.Write(buf, binary.LittleEndian, v)
+func (d *DFReaderBinary) MakeMsgbuf(fmt *messages.DFFormat, values []interface{}) []byte {
+    /*ret := []byte{0xA3, 0x95, fmt.Typ}
+    msgBuf := make([]byte, 0, len(ret)+binary.Size(fmt.MsgStruct))
+    msgBuf = append(msgBuf, ret...)
+    valueBuf := make([]byte, binary.Size(fmt.MsgStruct))
+    binary.LittleEndian.PutUint64(valueBuf, uint64(values[0].(uint64)))
+    msgBuf = append(msgBuf, valueBuf...)
+    return msgBuf*/
+    return nil
+}
+
+func (reader *DFReaderBinary) makeFormatMsgbuf(fmt *messages.DFFormat) []byte {
+    /*fmtFmt, ok := reader.Formats[0x80]
+    if !ok {
+        return nil
     }
-    return buf.Bytes()
+    ret := []byte{0xA3, 0x95, 0x80}
+    name := fmt.Name
+    format := fmt.Format
+    columns := strings.Join(fmt.Columns, ",")
+    values := []interface{}{
+        fmt.Typ,
+        uint8(binary.Size(fmt.MsgStruct) + 3),
+        []byte(name),
+        []byte(format),
+        []byte(columns),
+    }
+    valueBuf := make([]byte, binary.Size(fmtFmt.MsgStruct))
+    binary.LittleEndian.PutUint64(valueBuf, uint64(values[0].(uint64)))
+    binary.LittleEndian.PutUint64(valueBuf[8:], uint64(values[1].(uint8)))
+    copy(valueBuf[16:], values[2].([]byte))
+    copy(valueBuf[80:], values[3].([]byte))
+    copy(valueBuf[144:], values[4].([]byte))
+    msgBuf := make([]byte, 0, len(ret)+len(valueBuf))
+    msgBuf = append(msgBuf, ret...)
+    msgBuf = append(msgBuf, valueBuf...)
+    return msgBuf*/
+    return nil
 }
 
-func (d *DFReader) makeFormatMsgbuf(fmt *messages.DFFormat) []byte {
-    fmtFmt := d.formats[0x80]
-    buf := new(bytes.Buffer)
-    binary.Write(buf, binary.LittleEndian, []byte{0xA3, 0x95, 0x80})
-    binary.Write(buf, binary.LittleEndian, []interface{}{
-        fmt.Type,
-        len(fmt.MsgStruct) + 3,
-        fmt.Name,
-        fmt.Format,
-        strings.Join(fmt.Columns, ","),
-    })
-    return buf.Bytes()
+func (d *DFReaderBinary) addMsg(m *messages.DFMessage) {
+    msgType := m.GetType()
+    d.messages[msgType] = m
 }

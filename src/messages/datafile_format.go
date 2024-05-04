@@ -38,36 +38,36 @@ func u_ord(c byte) byte {
 }
 
 type DFFormat struct {
-    _type          byte
-    name           string
-    len            int
-    format         string
-    columns        []string
-    instance_field *string
-    unit_ids       *string
-    mult_ids       *string
-    msg_struct     string
-    msg_types      []interface{}
-    msg_mults      []interface{}
-    msg_fmts       []byte
-    colhash        map[string]int
-    a_indexes      []int
-    instance_ofs   int
-    instance_len   int
+    Typ            byte
+    Name           string
+    Len            int64
+    Format         string
+    Columns        []string
+    InstanceField *string
+    UnitIds       *string
+    MultIds       *string
+    MsgStruct     string
+    MsgTypes      []interface{}
+    MsgMults      []interface{}
+    MsgFmts       []byte
+    Colhash        map[string]int
+    AIndexes      []int
+    InstanceOfs   int
+    InstanceLen   int
 }
 
-func NewDFFormat(typ byte, name string, flen int, format string, columns string, oldfmt *DFFormat) (*DFFormat, error) {
+func NewDFFormat(typ byte, name string, flen int64, format string, columns string, oldfmt *DFFormat) (*DFFormat, error) {
     df := &DFFormat{
-        _type:    typ,
-        name:   nullTerm(name),
-        len:    flen,
-        format: format,
+        Typ:    typ,
+        Name:   nullTerm(name),
+        Len:    flen,
+        Format: format,
     }
 
     if columns == "" {
-        df.columns = []string{}
+        df.Columns = []string{}
     } else {
-        df.columns = strings.Split(columns, ",")
+        df.Columns = strings.Split(columns, ",")
     }
 
     msgStruct := "<"
@@ -82,7 +82,7 @@ func NewDFFormat(typ byte, name string, flen int, format string, columns string,
 		msgFmts = append(msgFmts, byte(c))
 		if val, ok := FORMAT_TO_STRUCT[byte(c)]; ok {
 			msgStruct += val[0].(string)
-			df.msg_mults = append(msgMults, val[1])
+			df.MsgMults = append(msgMults, val[1])
 			if c == 'a' {
 				msgTypes = append(msgTypes, binary.BigEndian)
 			} else {
@@ -92,55 +92,55 @@ func NewDFFormat(typ byte, name string, flen int, format string, columns string,
 			panic(fmt.Sprintf("DFFormat: Unsupported format char: '%c' in message %s", c, name))
 		}
 	}
-	df.msg_struct = msgStruct
-	df.msg_types = msgTypes
-	df.msg_mults = msgMults
-	df.msg_fmts = msgFmts
+	df.MsgStruct = msgStruct
+	df.MsgTypes = msgTypes
+	df.MsgMults = msgMults
+	df.MsgFmts = msgFmts
 
-	for i, col := range df.columns {
-		df.colhash[col] = i
+	for i, col := range df.Columns {
+		df.Colhash[col] = i
 	}
 
-    for i, fmt := range df.msg_fmts {
+    for i, fmt := range df.MsgFmts {
         if fmt == 'a' {
-            df.a_indexes = append(df.a_indexes, i)
+            df.AIndexes = append(df.AIndexes, i)
         }
     }
 
     if oldfmt != nil {
-        df.setUnitIds(oldfmt.unit_ids)
-        df.setMultIds(oldfmt.mult_ids)
+        df.SetUnitIds(oldfmt.UnitIds)
+        df.SetMultIds(oldfmt.MultIds)
     }
 
     return df, nil
 }
 
-func (df *DFFormat) setUnitIds(unit_ids *string) {
+func (df *DFFormat) SetUnitIds(unit_ids *string) {
     if unit_ids == nil {
         return
     }
 
-    df.unit_ids = unit_ids
+    df.UnitIds = unit_ids
     instance_idx := strings.Index(*unit_ids, "#")
     if instance_idx != -1 {
-        df.instance_field = &df.columns[instance_idx]
-        pre_fmt := df.format[:instance_idx]
+        df.InstanceField = &df.Columns[instance_idx]
+        pre_fmt := df.Format[:instance_idx]
         pre_sfmt := ""
         for _, c := range pre_fmt {
             pre_sfmt += FORMAT_TO_STRUCT[byte(c)][0].(string)
         }
-        df.instance_ofs = binary.Size(pre_sfmt)
-        ifmt := df.format[instance_idx]
-        df.instance_len = binary.Size(ifmt)
+        df.InstanceOfs = binary.Size(pre_sfmt)
+        ifmt := df.Format[instance_idx]
+        df.InstanceLen = binary.Size(ifmt)
     }
 }
 
-func (df *DFFormat) setMultIds(mult_ids *string) {
-    df.mult_ids = mult_ids
+func (df *DFFormat) SetMultIds(mult_ids *string) {
+    df.MultIds = mult_ids
 }
 
 func (df *DFFormat) String() string {
-    return fmt.Sprintf("DFFormat(%s,%s,%s,%s)", df._type, df.name, df.format, df.columns)
+    return fmt.Sprintf("DFFormat(%s,%s,%s,%s)", df.Typ, df.Name, df.Format, df.Columns)
 }
 
 

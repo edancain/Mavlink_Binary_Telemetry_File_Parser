@@ -7,6 +7,7 @@ import (
 	"math"
 	"reflect"
 	"strings"
+    "telemetry_parser/src/readers"
 )
 
 type GPS struct {
@@ -25,45 +26,28 @@ type DFMessage struct {
     Elements        []interface{}
     ApplyMultiplier bool
     FieldNames      []string
-    Parent          *Parent
+    Parent          *readers.DFReaderBinary
     TimeStamp       float64
     TimeMS          float64
     StartTime float64
 }
 
-/*type Format struct {
-    Name       string
-    Columns    []string
-    ColHash    map[string]int
-    MsgFmts    []string
-    MsgTypes   []interface{}
-    Format     []string
-    MsgMults   []float64
-    MsgStruct  string
-    Type       byte
-    InstanceField string
-}*/
-
-type Parent struct {
-    Messages map[string]*DFMessage
-}
-
-func NewDFMessage(fmt *DFFormat, elements []interface{}, applyMultiplier bool, parent *Parent, timestamp float64, timeMS float64) *DFMessage {
+func NewDFMessage(fmt *DFFormat, elements []interface{}, applyMultiplier bool, reader *readers.DFReaderBinary) *DFMessage {
     return &DFMessage{
         Fmt:             fmt,
         Elements:        elements,
         ApplyMultiplier: applyMultiplier,
-        FieldNames:      fmt.columns,
-        Parent:          parent,
-        TimeStamp:       timestamp,
-        TimeMS:          timeMS,
+        FieldNames:      fmt.Columns,
+        Parent:          reader,
+        //TimeStamp:       timestamp,
+        //TimeMS:          timeMS,
         StartTime: 0,
     }
 }
 
 func (df *DFMessage) ToDict() map[string]interface{} {
     d := map[string]interface{}{
-        "mavpackettype": df.Fmt.name,
+        "mavpackettype": df.Fmt.Name,
     }
 
     for _, field := range df.FieldNames {
@@ -75,7 +59,7 @@ func (df *DFMessage) ToDict() map[string]interface{} {
 
 func (df *DFMessage) ToMap() map[string]interface{} {
 	m := make(map[string]interface{})
-	m["mavpackettype"] = df.Fmt.name
+	m["mavpackettype"] = df.Fmt.Name
 
 	for _, field := range df.FieldNames {
 		m[field] = df.GetAttr(field)
@@ -85,33 +69,33 @@ func (df *DFMessage) ToMap() map[string]interface{} {
 }
 
 func (df *DFMessage) GetAttr(field string) interface{} {
-    i, ok := df.Fmt.colhash[field]
+    i, ok := df.Fmt.Colhash[field]
     if !ok {
         panic(errors.New("AttributeError: " + field))
     }
 
-    if df.Fmt.msg_fmts[i] == 'Z' && df.Fmt.name == "FILE" {
+    if df.Fmt.MsgFmts[i] == 'Z' && df.Fmt.Name == "FILE" {
         return df.Elements[i]
     }
 
     if str, ok := df.Elements[i].(string); ok {
-		if df.Fmt.msg_fmts[i] != 'M' || df.ApplyMultiplier {
+		if df.Fmt.MsgFmts[i] != 'M' || df.ApplyMultiplier {
 			return str
 		}
 		return nil
 	}
 
     var v = df.Elements[i]
-    if df.Fmt.format[i] == 'a' {
+    if df.Fmt.Format[i] == 'a' {
         return v
     }
 
-    if df.Fmt.msg_types[i] == reflect.TypeOf("").Elem() {
+    if df.Fmt.MsgTypes[i] == reflect.TypeOf("").Elem() {
         v = nullTerm(v.(string))
     }
     
-    if df.Fmt.msg_types[i] != nil && df.ApplyMultiplier {
-        v = v.(float64) * df.Fmt.msg_types[i].(float64)
+    if df.Fmt.MsgTypes[i] != nil && df.ApplyMultiplier {
+        v = v.(float64) * df.Fmt.MsgTypes[i].(float64)
     }
 
     return v
@@ -129,24 +113,24 @@ func nullTerm(s string) string {
 }
 
 func (df *DFMessage) SetAttr(field string, value interface{}) {
-    if field[0] >= 'A' && field[0] <= 'Z' && df.Fmt.colhash[field] != 0 {
-        i := df.Fmt.colhash[field]
-        if df.Fmt.msg_mults[i] != 0 && df.ApplyMultiplier {
-            value = value.(float64) / float64(df.Fmt.msg_mults[i].(float64))
+    if field[0] >= 'A' && field[0] <= 'Z' && df.Fmt.Colhash[field] != 0 {
+        i := df.Fmt.Colhash[field]
+        if df.Fmt.MsgMults[i] != 0 && df.ApplyMultiplier {
+            value = value.(float64) / float64(df.Fmt.MsgMults[i].(float64))
         }
         df.Elements[i] = value
     } 
 }
 
 func (df *DFMessage) GetType() string {
-    return df.Fmt.name
+    return df.Fmt.Name
 }
 
 func (df *DFMessage) String() string {
-    ret := fmt.Sprintf("%s {", df.Fmt.name)
+    ret := fmt.Sprintf("%s {", df.Fmt.Name)
     colCount := 0
 
-    for _, c := range df.Fmt.columns {
+    for _, c := range df.Fmt.Columns {
         val := df.GetAttr(c)
         if v, ok := val.(float64); ok && math.IsNaN(v) {
             val = "qnan"
@@ -165,13 +149,13 @@ func (df *DFMessage) String() string {
 
 func (df *DFMessage) GetMsgBuf() []byte {
     var values []interface{}
-	for i := range df.Fmt.columns {
-		if i >= len(df.Fmt.msg_mults) {
+	for i := range df.Fmt.Columns {
+		if i >= len(df.Fmt.MsgMults) {
 			continue
 		}
-		mul := df.Fmt.msg_mults[i]
-		name := df.Fmt.columns[i]
-		if name == "Mode" && contains(df.Fmt.columns, "ModeNum") {
+		mul := df.Fmt.MsgMults[i]
+		name := df.Fmt.Columns[i]
+		if name == "Mode" && contains(df.Fmt.Columns, "ModeNum") {
 			name = "ModeNum"
 		}
 		v := df.GetAttr(name)
@@ -186,7 +170,7 @@ func (df *DFMessage) GetMsgBuf() []byte {
 		values = append(values, v)
 	}
 
-	ret1 := []byte{0xA3, 0x95, byte(df.Fmt._type)}
+	ret1 := []byte{0xA3, 0x95, byte(df.Fmt.Typ)}
 	ret2 := structPack(values...)
 	return append(ret1, ret2...)
 }
@@ -232,11 +216,11 @@ func (df *DFMessage) GetFieldNames() []string {
 }
 
 func (df *DFMessage) GetItem(key string) (*DFMessage, error) {
-    if *df.Fmt.instance_field == "" {
+    if *df.Fmt.InstanceField == "" {
         return nil, errors.New("IndexError")
     }
 
-    k := fmt.Sprintf("%s[%s]", df.Fmt.name, key)
+    k := fmt.Sprintf("%s[%s]", df.Fmt.Name, key)
     if _, ok := df.Parent.Messages[k]; !ok {
         return nil, errors.New("IndexError")
     }

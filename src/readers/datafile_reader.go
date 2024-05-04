@@ -61,7 +61,7 @@ type DFReader struct {
 	params       map[string]interface{}
 	flightmodes  []interface{}
 	messages     map[string]*messages.DFMessage
-	percent      int
+	percent      float64
 	flightmode   string
 	zeroTimeBase bool
 	counts       []int
@@ -69,7 +69,8 @@ type DFReader struct {
 	offset       int
 	typeNums     []int
 	indexes      []int
-	dataLen      int
+	dataLen      int64
+	
 }
 
 func NewDFReader() *DFReader {
@@ -84,7 +85,7 @@ func NewDFReader() *DFReader {
 			"MAV":     nil,
 			"__MAV__": nil,
 		},
-		percent: 0,
+		percent: 0.0,
 	}
 }
 
@@ -99,27 +100,10 @@ func (d *DFReader) rewind() {
 	} else {
 		d.flightmodes = []interface{}{"UNKNOWN"}
 	}
-	d.percent = 0
+	d.percent = 0.0
 	if d.clock != nil {
 		d.clock.RewindEvent()
 	}
-}
-
-func (d *DFReader) initClockPX4(px4MsgTime, px4MsgGPS interface{}) bool {
-	//doesn't get hit
-	var clock = clocks.NewDFReaderClockPX4()
-	d.clock = clock
-	if !d.zeroTimeBase {
-		//d.clock.SetPX4Timebase(px4MsgTime)
-		//d.clock.SetTimebase(px4MsgGPS)
-	}
-	return true
-}
-
-func (d *DFReader) initClockUsec() {
-	//doesn't get hit
-	clock := clocks.NewDFReaderClock_usec()
-	d.clock = clock
 }
 
 func (d *DFReader) initClockMsec() {
@@ -127,18 +111,13 @@ func (d *DFReader) initClockMsec() {
 	d.clock = clock
 }
 
-func (d *DFReader) initClockGPSInterpolated(gpsClock *clocks.DFReaderClockGPSInterpolated) {
-	//doesn't get hit
-	clock := clocks.NewDFReaderClockGPSInterpolated()
-	d.clock = clock
-}
-
 func (d *DFReader) initClock() {
 	d.rewind()
 
 	//speculatively create a gps clock in case we don't find anything better
-	gpsClock := clocks.NewDFReaderClockGPSInterpolated()
-	d.clock = gpsClock
+	//gpsClock := clocks.NewDFReaderClockGPSInterpolated()
+	//d.clock = gpsClock
+	d.initClockMsec()
 
 	var px4MsgTime, px4MsgGPS, firstMsStamp interface{}
 	var firstUsStamp float64
@@ -166,7 +145,7 @@ func (d *DFReader) initClock() {
 			if ok {
 				if gps.TimeUS != 0 && gps.GWk != 0 {
 
-					d.initClockUsec()
+					//d.initClockUsec()
 
 					if !d.zeroTimeBase {
 						//d.clock.FindTimeBase(gps, firstUsStamp)
@@ -185,7 +164,7 @@ func (d *DFReader) initClock() {
 				d.initClockMsec()
 
 				if !d.zeroTimeBase {
-					d.clock.FindTimeBase(gps, firstMsStamp.(float64))
+					d.clock.FindTimeBase(gps, firstMsStamp.(int64))
 				}
 				haveGoodClock = true
 				break
@@ -209,15 +188,15 @@ func (d *DFReader) initClock() {
 		}
 
 		if px4MsgTime != nil && px4MsgGPS != nil {
-			d.initClockPX4(px4MsgTime, px4MsgGPS)
-			haveGoodClock = true
-			break
+			//d.initClockPX4(px4MsgTime, px4MsgGPS)
+			//haveGoodClock = true
+			//break
 		}
 	}
 
 	if !haveGoodClock {
 		if firstUsStamp != 0 {
-			d.initClockUsec()
+			//d.initClockUsec()
 		} else if firstMsStamp != nil {
 			d.initClockMsec()
 		}
@@ -229,15 +208,17 @@ func (d *DFReader) initClock() {
 func (d *DFReader) setTime(m *messages.DFMessage) {
 	m.TimeStamp = float64(d.timestamp)
 	if len(m.GetFieldNames()) > 0 && d.clock != nil {
-		d.clock.SetMessageTimestamp(m)
+		//d.clock.SetMessageTimestamp(m)
 	}
 } // Add closing parenthesis and semicolon here
 
 func (d *DFReader) recvMsg() messages.DFMessage {
-	return *d.arseNext()
+	//return *d.ParseNext()
 }
 
 func (d *DFReader) addMsg(m *messages.DFMessage) {
 	msgType := m.GetType()
 	d.messages[msgType] = m
 }
+
+

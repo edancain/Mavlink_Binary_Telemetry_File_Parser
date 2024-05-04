@@ -714,12 +714,14 @@ class DFReader_binary(DFReader):
                     break
                 self.offset = ofs
                 self._parse_next()
+
                 fmt = self.formats[mtype]
                 lengths[mtype] = fmt.len
             elif self.formats[mtype].instance_field is not None:
                 fmt = self.formats[mtype]
                 # see if we've has this instance value before
                 idata = self.data_map[ofs+3+fmt.instance_ofs:ofs+3+fmt.instance_ofs+fmt.instance_len]
+                
                 if not mtype in type_instances:
                     type_instances[mtype] = set()
                 if not idata in type_instances[mtype]:
