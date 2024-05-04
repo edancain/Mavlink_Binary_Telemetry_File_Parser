@@ -1,8 +1,5 @@
 package clocks
 
-import (
-	"telemetry_parser/src/messages"
-)
 
 type DFReaderClock interface {
 	SetTimebase(base float64)
@@ -43,7 +40,3 @@ func (clock *DFReaderClockBase) RewindEvent() {
 func (clock *DFReaderClockBase) FindTimeBase(gps *messages.GPS, firstMsStamp int64) {
 	// Implement this method based on your requirements
 }
-
-
-
-

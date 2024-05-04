@@ -1,6 +1,5 @@
 package clocks
 
-import "telemetry_parser/src/messages"
 
 //DFReaderClock_msec - a format where many messages have TimeMS in
 //their formats, and GPS messages have a "T" field giving msecs

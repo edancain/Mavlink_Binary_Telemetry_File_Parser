@@ -1,10 +1,5 @@
 package readers
 
-import (
-	"telemetry_parser/src/clocks"
-	"telemetry_parser/src/messages"
-)
-
 type MavType int
 
 const (
@@ -164,7 +159,7 @@ func (d *DFReader) initClock() {
 				d.initClockMsec()
 
 				if !d.zeroTimeBase {
-					d.clock.FindTimeBase(gps, firstMsStamp.(int64))
+					d.clock.FindTimeBase(messages.GPS{}, firstMsStamp.(int64))
 				}
 				haveGoodClock = true
 				break
@@ -205,6 +200,11 @@ func (d *DFReader) initClock() {
 	d.rewind()
 }
 
+func (d *DFReader) ParseNext() *messages.DFMessage {
+	// Implementation of the ParseNext() method goes here
+	return nil
+}
+
 func (d *DFReader) setTime(m *messages.DFMessage) {
 	m.TimeStamp = float64(d.timestamp)
 	if len(m.GetFieldNames()) > 0 && d.clock != nil {
@@ -213,7 +213,7 @@ func (d *DFReader) setTime(m *messages.DFMessage) {
 } // Add closing parenthesis and semicolon here
 
 func (d *DFReader) recvMsg() messages.DFMessage {
-	//return *d.ParseNext()
+	return *d.ParseNext()
 }
 
 func (d *DFReader) addMsg(m *messages.DFMessage) {

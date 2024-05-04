@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"syscall"
-	"telemetry_parser/src/messages"
 )
 
 type DFReaderBinary struct {
@@ -416,11 +415,8 @@ func (reader *DFReaderBinary) parseNext() *messages.DFMessage {
         }
     }
 
-    err := reader.addMsg(m)
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "bad msg at offset %d: %v\n", reader.offset, err)
-    }
-
+    reader.addMsg(m)
+   
     reader.percent = 100.0 * float64(reader.offset) / float64(reader.dataLen)
 
     return m

@@ -7,7 +7,6 @@ import (
 	"math"
 	"reflect"
 	"strings"
-    "telemetry_parser/src/readers"
 )
 
 type GPS struct {
