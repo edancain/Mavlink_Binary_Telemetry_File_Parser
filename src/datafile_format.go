@@ -1,33 +1,33 @@
 package src
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
-	"reflect"
 	"strings"
 )
 
-var FORMAT_TO_STRUCT = map[byte][3]interface{}{
-    'a': {"64s", nil, reflect.TypeOf("").Elem()},
-    'b': {"b", nil, reflect.TypeOf(int(0))},
-    'B': {"B", nil, reflect.TypeOf(int(0))},
-    'h': {"h", nil, reflect.TypeOf(int16(0))},
-    'H': {"H", nil, reflect.TypeOf(uint16(0))},
-    'i': {"i", nil, reflect.TypeOf(int32(0))},
-    'I': {"I", nil, reflect.TypeOf(uint32(0))},
-    'f': {"f", nil, reflect.TypeOf(float32(0))},
-    'n': {"4s", nil, reflect.TypeOf("").Elem()},
-    'N': {"16s", nil, reflect.TypeOf("").Elem()},
-    'Z': {"64s", nil, reflect.TypeOf("").Elem()},
-    'c': {"h", 0.01, reflect.TypeOf(float64(0))},
-    'C': {"H", 0.01, reflect.TypeOf(float64(0))},
-    'e': {"i", 0.01, reflect.TypeOf(float64(0))},
-    'E': {"I", 0.01, reflect.TypeOf(float64(0))},
-    'L': {"i", 1.0e-7, reflect.TypeOf(float64(0))},
-    'd': {"d", nil, reflect.TypeOf(float64(0))},
-    'M': {"b", nil, reflect.TypeOf(int(0))},
-    'q': {"q", nil, reflect.TypeOf(int64(0))}, // Backward compat
-    'Q': {"Q", nil, reflect.TypeOf(int64(0))}, // Backward compat
+var FormatToUnpackInfo = map[byte][3]interface{}{
+    'a': {"64s", nil, string("")},
+    'b': {"b", nil, int(0)},
+    'B': {"B", nil, int(0)},
+    'c': {"h", 0.01, float64(0)},
+    'C': {"H", 0.01, float64(0)},
+    'd': {"d", nil, float64(0)},
+    'e': {"i", 0.01, float64(0)},
+    'E': {"I", 0.01, float64(0)},
+    'f': {"f", nil, float32(0)},
+    'h': {"h", nil, int16(0)},
+    'H': {"H", nil, uint16(0)},
+    'i': {"i", nil, int32(0)},
+    'I': {"I", nil, uint32(0)},
+    'L': {"i", 1.0e-7, float64(0)},
+    'M': {"b", nil, int(0)},
+    'n': {"4s", nil, string("")},
+    'N': {"16s", nil, string("")},
+    'q': {"q", nil, int64(0)}, // Backward compat
+    'Q': {"Q", nil, int64(0)}, // Backward compat
+    'Z': {"64s", nil, string("")},
 }
 
 func u_ord(c byte) byte {
@@ -38,9 +38,9 @@ func u_ord(c byte) byte {
 }
 
 type DFFormat struct {
-    Typ            byte
+    Typ            int
     Name           string
-    Len            int64
+    Len            int
     Format         string
     Columns        []string
     InstanceField *string
@@ -49,38 +49,33 @@ type DFFormat struct {
     MsgStruct     string
     MsgTypes      []interface{}
     MsgMults      []interface{}
-    MsgFmts       []byte
+    MsgFmts       []string
     Colhash        map[string]int
     AIndexes      []int
     InstanceOfs   int
     InstanceLen   int
 }
 
-func NewDFFormat(typ byte, name string, flen int64, format string, columns string, oldfmt *DFFormat) (*DFFormat, error) {
+func NewDFFormat(typ int, name string, flen int, format string, columns []string, oldfmt *DFFormat) (*DFFormat, error) {
     df := &DFFormat{
         Typ:    typ,
         Name:   nullTerm(name),
         Len:    flen,
         Format: format,
-    }
-
-    if columns == "" {
-        df.Columns = []string{}
-    } else {
-        df.Columns = strings.Split(columns, ",")
+        Columns: columns,
     }
 
     msgStruct := "<"
     msgMults := []interface{}{}
 	msgTypes := []interface{}{}
-	msgFmts := []byte{}
+	msgFmts := []string{}
 
     for _, c := range format {
 		if u_ord(byte(c)) == 0 {
 			break
 		}
-		msgFmts = append(msgFmts, byte(c))
-		if val, ok := FORMAT_TO_STRUCT[byte(c)]; ok {
+		msgFmts = append(msgFmts, string(c))
+		if val, ok := FormatToUnpackInfo[byte(c)]; ok {
 			msgStruct += val[0].(string)
 			df.MsgMults = append(msgMults, val[1])
 			if c == 'a' {
@@ -97,12 +92,14 @@ func NewDFFormat(typ byte, name string, flen int64, format string, columns strin
 	df.MsgMults = msgMults
 	df.MsgFmts = msgFmts
 
-	for i, col := range df.Columns {
-		df.Colhash[col] = i
-	}
+	df.Colhash = make(map[string]int)
+    for i, column := range columns {
+        df.Colhash[column] = i
+    }
 
-    for i, fmt := range df.MsgFmts {
-        if fmt == 'a' {
+    df.AIndexes = []int{}
+    for i, msgFmt := range df.MsgFmts {
+        if msgFmt == "a" {
             df.AIndexes = append(df.AIndexes, i)
         }
     }
@@ -114,6 +111,159 @@ func NewDFFormat(typ byte, name string, flen int64, format string, columns strin
 
     return df, nil
 }
+
+//test
+func (df *DFFormat) getUnpacker() func([]byte) ([]interface{}, error) {
+    return func(data []byte) ([]interface{}, error) {
+        if len(data) < df.Len-3 {
+            return nil, fmt.Errorf("insufficient data for message type %d", df.Typ)
+        }
+
+        elements := make([]interface{}, 0)
+        reader := bytes.NewReader(data)
+
+        for i := 1; i < len(df.MsgStruct); i++ {
+            switch df.MsgStruct[i] {
+            case 'a', 'Z':
+                var str [64]byte
+                if err := binary.Read(reader, binary.LittleEndian, &str); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, str[:])
+            case 'b', 'M':
+                var val int8
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, int(val))
+            case 'B':
+                var val uint8
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, int(val))
+            case 'c':
+                var val int16
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, float64(val)*0.01)
+            case 'C':
+                var val uint16
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, float64(val)*0.01)
+            case 'd':
+                var val float64
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, val)
+            case 'e':
+                var val int32
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, float64(val)*0.01)
+            case 'E':
+                var val uint32
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, float64(val)*0.01)
+            case 'f':
+                var val float32
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, float64(val))
+            case 'h':
+                var val int16
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, int(val))
+            case 'H':
+                var val uint16
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, int(val))
+            case 'i', 'L':
+                var val int32
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, int(val))
+            case 'I':
+                var val uint32
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, int(val))
+            case 'n':
+                var str [4]byte
+                if err := binary.Read(reader, binary.LittleEndian, &str); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, str[:])
+            case 'N':
+                var str [16]byte
+                if err := binary.Read(reader, binary.LittleEndian, &str); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, str[:])
+            case 'q', 'Q':
+                var val int64
+                if err := binary.Read(reader, binary.LittleEndian, &val); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, val)
+            case 's':
+                /*var lenStr int
+                for j := i + 1; j < len(df.MsgStruct); j++ {
+                    switch df.MsgStruct[j] {
+                    case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+                        lenStr = lenStr*10 + int(df.MsgStruct[j]-'0')
+                        i++
+                    default:
+                        break
+                    }
+                }
+                str := make([]byte, lenStr)
+                if err := binary.Read(reader, binary.LittleEndian, &str); err != nil {
+                    return nil, err
+                }
+                elements = append(elements, str)*/
+                var strSize int
+                switch df.MsgStruct[i+1] {
+                case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+                    strSize = int(df.MsgStruct[i+1] - '0')
+                    i++
+                default:
+                    strSize = 64 // Default size if not specified
+                }
+            
+                var strBytes [64]byte // Assuming maximum length of 64 bytes for the string
+                if err := binary.Read(reader, binary.LittleEndian, &strBytes); err != nil {
+                    return nil, err
+                }
+                str := string(strBytes[:strSize])
+                elements = append(elements, str)
+            case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+                // Skip the digits
+            case '<':
+                // Ignore the '<' character
+            default:
+                return nil, fmt.Errorf("unsupported format character: %c", df.MsgStruct[i])
+            }
+        }
+
+        return elements, nil
+    }
+}
+//end test
 
 func (df *DFFormat) SetUnitIds(unit_ids *string) {
     if unit_ids == nil {
@@ -127,7 +277,7 @@ func (df *DFFormat) SetUnitIds(unit_ids *string) {
         pre_fmt := df.Format[:instance_idx]
         pre_sfmt := ""
         for _, c := range pre_fmt {
-            pre_sfmt += FORMAT_TO_STRUCT[byte(c)][0].(string)
+            pre_sfmt += FormatToUnpackInfo[byte(c)][0].(string)
         }
         df.InstanceOfs = binary.Size(pre_sfmt)
         ifmt := df.Format[instance_idx]

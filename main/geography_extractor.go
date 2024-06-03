@@ -1,10 +1,12 @@
 package main
 
 import (
-    "fmt"
-    "os"
-    "strings"
-    "github.com/edancain/telemetry_parser/src"
+	"fmt"
+	"os"
+	"runtime"
+	"strings"
+
+	"github.com/edancain/telemetry_parser/src"
 )
 
 type GPSValues struct {
@@ -22,82 +24,101 @@ func extractData(filename string) ([]map[string]interface{}, error) {
         return nil, err
     }
 
-    var dfreader *src.DFReaderBinary
-
     if strings.HasSuffix(filename, ".log") {
         // dfreader = DFReader_text(filename)
+        fmt.Println("log file")
     } else {
-        dfreader, err = src.NewDFReaderBinary(filename, false, nil)
+        dfreader, err := src.NewDFReaderBinary(filename, false, nil)
         if err != nil {
             fmt.Println("Failed to create DFReaderBinary:", err)
+            fmt.Println(dfreader) //bogus
             return nil, err
+        } 
+
+        dfreader.Print_binaryFormats()
+        
+        if _, ok := dfreader.Messages["GPS"]; !ok {
+            fmt.Println("No GPS data")
+            return nil, fmt.Errorf("no GPS data")
+        } else {
+            fmt.Println("GPS data found")
         }
-    }
 
-    if _, ok := dfreader.messages["GPS"]; !ok {
-        fmt.Println("No GPS data")
-        return nil, fmt.Errorf("no GPS data")
-    }
+        dfreader.ParseNext()
+        msg := dfreader.Messages
+        count := 0
+        messageCount := 0
+        var data []map[string]interface{}
 
-    dfreader.parseNext()
-    msg := dfreader.messages
-    count := 0
-    messageCount := 0
-    var data []map[string]interface{}
+        // Get the values of the attributes
+        if gpsValues, ok := dfreader.Messages["GPS"]; ok {
+            fieldnames := gpsValues.FieldNames
+            fmt.Println(fieldnames)
+        }
+        
+        // Create a set to store seen times
+        //seenTimes := make(map[int64]bool)
 
-    // Get the values of the attributes
-    fieldnames := []string{"Lat", "TimeMS", "TimeUS"} // Update this as per your requirement
+        // Iterate over all messages
+        for msg != nil {
+            messageCount++
+            if gpsValues, ok := msg["GPS"]; ok {
+                lat:= gpsValues.GetAttr("Lat").(int)
+                fmt.Println(lat)
+                
+                /*if lat != 0 {
+                    // Get the values of the fields
+                    values := []interface{}{gpsValues.Lat, gpsValues.TimeMS, gpsValues.TimeUS} // Update this as per your requirement
 
-    // Create a set to store seen times
-    seenTimes := make(map[int64]bool)
+                    // Create a dictionary from fieldnames and values
+                    entryDict := make(map[string]interface{})
+                    for i, field := range fieldnames {
+                        entryDict[field] = values[i]
+                    }
 
-    // Iterate over all messages
-    for msg != nil {
-        messageCount++
-        if gpsValues, ok := msg["GPS"]; ok {
-            if gpsValues.Lat != 0 {
-                // Get the values of the fields
-                values := []interface{}{gpsValues.Lat, gpsValues.TimeMS, gpsValues.TimeUS} // Update this as per your requirement
-
-                // Create a dictionary from fieldnames and values
-                entryDict := make(map[string]interface{})
-                for i, field := range fieldnames {
-                    entryDict[field] = values[i]
-                }
-
-                // Check if this time has been seen before
-                time := entryDict["TimeMS"].(int64)
-                if !seenTimes[time] {
-                    // Add this time to the set of seen times
-                    seenTimes[time] = true
-                    data = append(data, entryDict)
-                    count++
-                }
+                    // Check if this time has been seen before
+                    time := entryDict["TimeMS"].(int64)
+                    if !seenTimes[time] {
+                        // Add this time to the set of seen times
+                        seenTimes[time] = true
+                        data = append(data, entryDict)
+                        count++
+                    }
+                }*/
             }
+
+            // Get the next message
+            dfreader.ParseNext()
+            fmt.Printf("%.1f%%\n", dfreader.Percent)
+            fmt.Printf("%d unique records\n", count)
+            if dfreader.Percent > 99.99 {
+                break
+            }
+
+            msg = dfreader.Messages
         }
 
-        // Get the next message
-        dfreader.parseNext()
-        fmt.Printf("%.1f%%\n", dfreader.percent)
-        fmt.Printf("%d unique records\n", count)
-        if dfreader.percent > 99.99 {
-            break
+        fmt.Println("Total messages:", messageCount)
+
+        if len(data) == 0 {
+            fmt.Println("No GPS Data in File")
+            return nil, fmt.Errorf("No GPS Data in File")
         }
 
-        msg = dfreader.messages
     }
-
-    fmt.Printf("Total messages: %d\n", messageCount)
-
-    if len(data) == 0 {
-        fmt.Println("No GPS Data in File")
-        return nil, fmt.Errorf("No GPS Data in File")
-    }
-
-    return data, nil
+    return nil, nil//data, nil
 }
 
 func main() {
+    defer func() {
+        if r := recover(); r != nil {
+            fmt.Println("Recovered from panic:", r)
+            buf := make([]byte, 1<<16)
+            runtime.Stack(buf, true)
+            fmt.Printf("%s\n", buf)
+        }
+    }()
+    
     filename := "10.bin"
     data, err := extractData(filename)
     if err != nil {
@@ -108,3 +129,4 @@ func main() {
     // Use the extracted data
     fmt.Println(data)
 }
+
