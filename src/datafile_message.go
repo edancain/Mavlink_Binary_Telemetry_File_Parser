@@ -27,10 +27,10 @@ type DataFileMessage struct {
 	Elements        []interface{}
 	ApplyMultiplier bool
 	FieldNames      []string
-	Parent          *DFReaderBinary
+	Parent          *BinaryDataFileReader
 }
 
-func NewDFMessage(fmt *DataFileFormat, elements []interface{}, applyMultiplier bool, reader *DFReaderBinary) *DataFileMessage {
+func NewDFMessage(fmt *DataFileFormat, elements []interface{}, applyMultiplier bool, reader *BinaryDataFileReader) *DataFileMessage {
 	return &DataFileMessage{
 		Fmt:             fmt,
 		Elements:        elements,

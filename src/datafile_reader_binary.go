@@ -60,12 +60,11 @@ const (
 
 type UnpackerFunc func([]byte) ([]interface{}, error)
 
-type DFReaderBinary struct {
+type BinaryDataFileReader struct {
 	fileHandle *os.File
 	dataMap    mmap.MMap
 	HEAD1      byte
 	HEAD2      byte
-	//unpackers  map[byte]UnpackerFunc
 	unpackers    map[int]func([]byte) ([]interface{}, error)
 	formats      map[int]*DataFileFormat
 	zeroTimeBase bool
@@ -86,13 +85,11 @@ type DFReaderBinary struct {
 	Messages     map[string]*DataFileMessage
 	Percent      float64
 	clock        *GPSInterpolatedClock
-	//flightmode   string
-	indexes       []int
 	dataLen       int
 	binaryFormats []string
 }
 
-func NewDFReaderBinary(filename string, zeroTimeBase bool, progressCallback func(int)) (*DFReaderBinary, error) {
+func NewBinaryDataFileReader(filename string, zeroTimeBase bool, progressCallback func(int)) (*BinaryDataFileReader, error) {
 
 	var columns = []string{"Type", "Length", "Name", "Format", "Columns"}
 	df, err := NewDataFileFormat(0x80, "FMT", 89, "BBnNZ", columns, nil)
@@ -100,7 +97,7 @@ func NewDFReaderBinary(filename string, zeroTimeBase bool, progressCallback func
 		return nil, err
 	}
 
-	reader := &DFReaderBinary{
+	reader := &BinaryDataFileReader{
 		HEAD1:        0xA3,
 		HEAD2:        0x95,
 		verbose:      false,
@@ -152,7 +149,7 @@ func NewDFReaderBinary(filename string, zeroTimeBase bool, progressCallback func
 	}
 }*/
 
-func (reader *DFReaderBinary) init(progressCallback func(int)) {
+func (reader *BinaryDataFileReader) init(progressCallback func(int)) {
 	// Implementation of init function
 	reader.offset = 0
 	reader.remaining = reader.dataLen
@@ -162,7 +159,7 @@ func (reader *DFReaderBinary) init(progressCallback func(int)) {
 	reader.initArrays(progressCallback)
 }
 
-func (d *DFReaderBinary) initClock() {
+func (d *BinaryDataFileReader) initClock() {
 	d._rewind()
 
 	d.InitClockGPSInterpolated()
@@ -206,7 +203,7 @@ func (d *DFReaderBinary) initClock() {
 
 			if timeUS != 0 && gwk != 0 {
 				if !d.zeroTimeBase {
-					d.clock.FindTimeBase(&message, firstMsStamp) // everything-usec-timestamped
+					d.clock.FindTimeBase(&message, firstMsStamp) 
 				}
 				break
 			}
@@ -231,12 +228,12 @@ func (d *DFReaderBinary) initClock() {
 	d._rewind()
 }
 
-func (d *DFReaderBinary) InitClockGPSInterpolated() {
+func (d *BinaryDataFileReader) InitClockGPSInterpolated() {
 	clock := NewGPSInterpolatedClock()
 	d.clock = clock
 }
 
-func (reader *DFReaderBinary) _rewind() {
+func (reader *BinaryDataFileReader) _rewind() {
 	reader.offset = 0
 	reader.remaining = reader.dataLen
 	reader.typeNums = nil
@@ -258,11 +255,11 @@ func (reader *DFReaderBinary) _rewind() {
 	}
 }
 
-func (reader *DFReaderBinary) Rewind() {
+func (reader *BinaryDataFileReader) Rewind() {
 	reader._rewind()
 }
 
-func (reader *DFReaderBinary) initArrays(progressCallback func(int)) {
+func (reader *BinaryDataFileReader) initArrays(progressCallback func(int)) {
 	//'''initialise arrays for fast recv_match()'''
 	reader.offsets = make([][]int, 256)
 	reader.counts = make([]int, 256)
@@ -445,7 +442,7 @@ func (reader *DFReaderBinary) initArrays(progressCallback func(int)) {
 	reader.offset = 0
 }
 
-func (d *DFReaderBinary) recvMsg() (DataFileMessage, error) {
+func (d *BinaryDataFileReader) recvMsg() (DataFileMessage, error) {
 	msg, err := d.ParseNext()
 	if err != nil {
 		return DataFileMessage{}, err
@@ -453,7 +450,7 @@ func (d *DFReaderBinary) recvMsg() (DataFileMessage, error) {
 	return *msg, nil
 }
 
-func (reader *DFReaderBinary) ParseNext() (*DataFileMessage, error) {
+func (reader *BinaryDataFileReader) ParseNext() (*DataFileMessage, error) {
 	var skipType []byte
 	skipStart := 0
 	//var hdr mmap.MMap
@@ -662,7 +659,7 @@ func (reader *DFReaderBinary) ParseNext() (*DataFileMessage, error) {
 	return m, nil
 }
 
-func (reader *DFReaderBinary) Print_binaryFormats() {
+func (reader *BinaryDataFileReader) Print_binaryFormats() {
 	fmt.Println("Binary formats:")
 	for _, format := range reader.binaryFormats {
 		fmt.Println(format)
@@ -709,7 +706,7 @@ func bytesToInt16Array(b []byte) []int16 {
 	return arr
 }
 
-func (reader *DFReaderBinary) FindUnusedFormat() int {
+func (reader *BinaryDataFileReader) FindUnusedFormat() int {
 	for i := 254; i > 1; i-- {
 		if _, ok := reader.formats[i]; !ok {
 			return i
@@ -718,7 +715,7 @@ func (reader *DFReaderBinary) FindUnusedFormat() int {
 	return 0
 }
 
-func (reader *DFReaderBinary) AddFormat(dfmt *DataFileFormat) *DataFileFormat {
+func (reader *BinaryDataFileReader) AddFormat(dfmt *DataFileFormat) *DataFileFormat {
 	newType := reader.FindUnusedFormat()
 	if newType == 0 {
 		return nil
@@ -728,7 +725,7 @@ func (reader *DFReaderBinary) AddFormat(dfmt *DataFileFormat) *DataFileFormat {
 	return dfmt
 }
 
-func (d *DFReaderBinary) addMsg(m *DataFileMessage) {
+func (d *BinaryDataFileReader) addMsg(m *DataFileMessage) {
 	msgType := m.GetType()
 	d.Messages[msgType] = m
 }
