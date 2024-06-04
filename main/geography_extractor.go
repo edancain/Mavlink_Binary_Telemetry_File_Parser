@@ -10,12 +10,6 @@ import (
 	"github.com/edancain/telemetry_parser/src"
 )
 
-type GPSValues struct {
-	Lat    float64
-	TimeMS int64
-	TimeUS int64
-}
-
 func extractData(filename string) ([]map[string]interface{}, error) {
 	_, err := os.Stat(filename)
 	if os.IsNotExist(err) {
