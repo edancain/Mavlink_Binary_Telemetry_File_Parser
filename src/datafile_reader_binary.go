@@ -165,7 +165,6 @@ func (reader *DFReaderBinary) init(progressCallback func(int)) {
 func (d *DFReaderBinary) initClock() {
 	d._rewind()
 
-	//speculatively create a gps clock in case we don't find anything better
 	d.InitClockGPSInterpolated()
     var firstUsStamp int
     firstUsStamp = 0
@@ -180,9 +179,6 @@ func (d *DFReaderBinary) initClock() {
 		}
 
 		msgType := message.GetType()
-        if count == 471 {   
-            fmt.Println("test")
-        }
 
         if firstUsStamp == 0{
             usTimeStamp, ok := message.GetAttr("TimeUS").(int)
@@ -205,13 +201,8 @@ func (d *DFReaderBinary) initClock() {
         }
     
 		if msgType == "GPS" || msgType == "GPS2" {
-            timeUS, ok := message.GetAttr("TimeUS").(int)
-            if !ok {  
-            }
-
-            gwk, ok := message.GetAttr("GWk").(int)
-            if !ok {  
-            }
+            timeUS, _ := message.GetAttr("TimeUS").(int)
+            gwk, _ := message.GetAttr("GWk").(int)
 
             if timeUS != 0 && gwk != 0 {
                 if !d.zeroTimeBase {
@@ -220,13 +211,8 @@ func (d *DFReaderBinary) initClock() {
                 break;
             }
 
-            t, ok := message.GetAttr("T").(int)
-            if !ok {
-            }
-
-            week, ok := message.GetAttr("Week").(int)
-            if !ok {  
-            }
+            t, _ := message.GetAttr("T").(int)
+            week, _ := message.GetAttr("Week").(int)
 
             if t != 0 && week != 0 {
                 if firstMsStamp == 0 {
@@ -503,7 +489,7 @@ func (reader *DFReaderBinary) ParseNext() (*DFMessage, error) {
 		}
 
         if skipType == nil{
-            skipType = hdr // (u_ord(hdr[0]), u_ord(hdr[1]), u_ord(hdr[2]))
+            skipType = hdr 
             skipStart = reader.offset
         }
 
@@ -547,17 +533,6 @@ func (reader *DFReaderBinary) ParseNext() (*DFMessage, error) {
         }
 
         unpacker := dfmt.getUnpacker()
-            // Unpack the binary data using the format's message structure
-            // You'll need to implement this function based on your specific requirements
-            // It should take the binary data and return a slice of interface{} values
-            // representing the unpacked elements
-            // You can use the `binary` package in Go to perform the unpacking
-            // based on the format specified in fmt.MsgStruct
-            // For example:
-            // var result []interface{}
-            // // Perform unpacking using binary.Read or binary.Unpack
-            // return result, nil
-        //}
 
         reader.unpackers[msgType] = unpacker
     }
@@ -642,13 +617,9 @@ func (reader *DFReaderBinary) ParseNext() (*DFMessage, error) {
         var columns = []string{}
 
         if len(stringArray) > 0{
-            columns = strings.Split(stringArray[0], ",")//, ok := elements[4].(string)
+            columns = strings.Split(stringArray[0], ",")
         }
 		
-		//columnsStr = strings.TrimRight(columnsStr, "\x00")
-        // Split the string by comma to get the columns
-        //columns := strings.Split(columnsStr, ",")   
-		// Get the uint8 value from elements[1]
 		length, ok := elements[1].(int)
 		if !ok {
 			// Handle the case where elements[1] is not a uint8
@@ -689,130 +660,6 @@ func (reader *DFReaderBinary) ParseNext() (*DFMessage, error) {
     reader.Percent = 100.0 * float64(reader.offset) / float64(reader.dataLen)
 
     return m, nil
-
-	/*unpacker := dfmt.getUnpacker()
-    if msgType == 130 || msgType == 144 {
-        fmt.Println("test")
-        //data := []byte{0x03, 0x08, 0x71, 0x18, 0x19, 0x3d, 0x07, 0x09, 0xac, 0x00, 0x83, 0x43, 0x56, 0x14, 0x3b, 0xba, 0x37, 0xb9, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x5a, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x8a, 0x00, 0x00, 0x8f, 0xc2, 0xf5, 0xbd, 0x18, 0xc2, 0x07, 0x00}
-        data := body
-        var elems []interface{}
-        elems = append(elems, data[0])                           // B
-        elems = append(elems, binary.LittleEndian.Uint32(data[1:5]))  // I
-        elems = append(elems, binary.LittleEndian.Uint16(data[5:7]))  // H
-        elems = append(elems, data[7])                           // B
-        elems = append(elems, int16(binary.LittleEndian.Uint16(data[8:10]))) // h
-        elems = append(elems, int32(binary.LittleEndian.Uint32(data[10:14]))) // i
-        elems = append(elems, int32(binary.LittleEndian.Uint32(data[14:18]))) // i
-        elems = append(elems, int32(binary.LittleEndian.Uint32(data[18:22]))) // i
-        elems = append(elems, int32(binary.LittleEndian.Uint32(data[22:26]))) // i
-        elems = append(elems, binary.LittleEndian.Uint32(data[26:30])) // I
-        elems = append(elems, math.Float32frombits(binary.LittleEndian.Uint32(data[30:34]))) // f
-        elems = append(elems, binary.LittleEndian.Uint32(data[34:38])) // I
-        fmt.Println("Manual unpacking result")
-        fmt.Println(elems)
-    }
-
-	elements, err := unpacker(body)
-    fmt.Println("Unpacking result")
-    fmt.Println(elements)
-
-    fmt.Println("body value:")
-    fmt.Println(body)
-    fmt.Println("dfmt.format value:")
-    fmt.Println(dfmt.MsgStruct)
-    reader.binaryFormats = addUnique(reader.binaryFormats, dfmt.MsgStruct)
-	if err != nil {
-		if reader.remaining < 528 {
-			// we can have garbage at the end of an APM2 log
-			return nil, nil
-		}
-		// we should also cope with other corruption; logs
-		// transferred via DataFlash_MAVLink may have blocks of 0s
-		// in them, for example
-		fmt.Fprintf(os.Stderr, "Failed to parse %s/%s with len %d (remaining %d): %v\n",
-			dfmt.Name, dfmt.MsgStruct, len(body), reader.remaining, err)
-		return reader.ParseNext()
-	}
-
-	if elements == nil {
-		return reader.ParseNext()
-	}
-
-	name := dfmt.Name
-	for _, aIndex := range dfmt.AIndexes {
-		if aIndex < len(elements) {
-			elements[aIndex] = bytesToInt16Slice(elements[aIndex].([]byte))
-		}
-	}
-
-	if name == "FMT" {
-		var ftype byte
-		// Get the uint8 value from elements[0]
-		ftype, ok := elements[0].(uint8)
-		if !ok {
-			// Handle the case where elements[0] is not a uint8
-			fmt.Printf("Unexpected type for FMT message, expected uint8, got %T\n", elements[0])
-			return reader.ParseNext()
-		}
-
-		// Get the byte slice from elements[2] and convert to string
-		nameBytes, ok := elements[2].([]byte)
-		if !ok {
-			// Handle the case where elements[2] is not a []byte
-			fmt.Printf("Unexpected type for FMT message name, expected []byte, got %T\n", elements[2])
-			return reader.ParseNext()
-		}
-		name := string(bytes.TrimRight(nameBytes, "\x00"))
-
-		// Get the byte slice from elements[3] and convert to string
-		formatBytes, ok := elements[3].([]byte)
-		if !ok {
-			// Handle the case where elements[3] is not a []byte
-			fmt.Printf("Unexpected type for FMT message format, expected []byte, got %T\n", elements[3])
-			return reader.ParseNext()
-		}
-		format := string(bytes.TrimRight(formatBytes, "\x00"))
-
-		// Get the byte slice from elements[4] and convert to string
-		columnsStr, ok := elements[4].(string)
-		if !ok {
-			// Handle the case where elements[4] is not a []byte
-			fmt.Printf("Unexpected type for FMT message columns, expected []byte, got %T\n", elements[4])
-			return reader.ParseNext()
-		}
-		columnsStr = strings.TrimRight(columnsStr, "\x00")
-        // Split the string by comma to get the columns
-        columns := strings.Split(columnsStr, ",")   
-		// Get the uint8 value from elements[1]
-		length, ok := elements[1].(uint8)
-		if !ok {
-			// Handle the case where elements[1] is not a uint8
-			fmt.Printf("Unexpected type for FMT message length, expected uint8, got %T\n", elements[1])
-			return reader.ParseNext()
-		}
-
-        if name == "GPS"{
-            fmt.Println("test")
-        }
-
-		mfmt, err := NewDFFormat(ftype, name, int(length), format, columns, reader.formats[ftype])
-		if err != nil {
-			return reader.ParseNext()
-		}
-		reader.formats[ftype] = mfmt
-	}
-
-	reader.offset += dfmt.Len - 3
-	reader.remaining = reader.dataLen - reader.offset
-	m := NewDFMessage(dfmt, elements, true, reader)
-
-	reader.addMsg(m)
-	//if err != nil {
-	//    fmt.Printf("bad msg at offset %d: %v\n", reader.offset, err)
-	//}
-	reader.Percent = 100.0 * float64(reader.offset) / float64(reader.dataLen)
-
-	return m, nil*/
 }
 
 func (reader *DFReaderBinary) Print_binaryFormats() {
@@ -880,47 +727,6 @@ func (reader *DFReaderBinary) AddFormat(dfmt *DFFormat) *DFFormat {
 	reader.formats[newType] = dfmt
 	return dfmt
 }
-
-/*
-func (d *DFReaderBinary) MakeMsgbuf(fmt *DFFormat, values []interface{}) []byte {
-    /*ret := []byte{0xA3, 0x95, fmt.Typ}
-    msgBuf := make([]byte, 0, len(ret)+binary.Size(fmt.MsgStruct))
-    msgBuf = append(msgBuf, ret...)
-    valueBuf := make([]byte, binary.Size(fmt.MsgStruct))
-    binary.LittleEndian.PutUint64(valueBuf, uint64(values[0].(uint64)))
-    msgBuf = append(msgBuf, valueBuf...)
-    return msgBuf
-    return nil
-}
-
-func (reader *DFReaderBinary) makeFormatMsgbuf(fmt *DFFormat) []byte {
-    /*fmtFmt, ok := reader.Formats[0x80]
-    if !ok {
-        return nil
-    }
-    ret := []byte{0xA3, 0x95, 0x80}
-    name := fmt.Name
-    format := fmt.Format
-    columns := strings.Join(fmt.Columns, ",")
-    values := []interface{}{
-        fmt.Typ,
-        uint8(binary.Size(fmt.MsgStruct) + 3),
-        []byte(name),
-        []byte(format),
-        []byte(columns),
-    }
-    valueBuf := make([]byte, binary.Size(fmtFmt.MsgStruct))
-    binary.LittleEndian.PutUint64(valueBuf, uint64(values[0].(uint64)))
-    binary.LittleEndian.PutUint64(valueBuf[8:], uint64(values[1].(uint8)))
-    copy(valueBuf[16:], values[2].([]byte))
-    copy(valueBuf[80:], values[3].([]byte))
-    copy(valueBuf[144:], values[4].([]byte))
-    msgBuf := make([]byte, 0, len(ret)+len(valueBuf))
-    msgBuf = append(msgBuf, ret...)
-    msgBuf = append(msgBuf, valueBuf...)
-    return msgBuf
-    return nil
-}*/
 
 func (d *DFReaderBinary) addMsg(m *DFMessage) {
 	msgType := m.GetType()

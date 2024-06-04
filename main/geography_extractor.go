@@ -5,7 +5,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
-
+    "time"
 	"github.com/edancain/telemetry_parser/src"
 )
 
@@ -71,9 +71,6 @@ func extractData(filename string) ([]map[string]interface{}, error) {
                 fmt.Println(lat, lon)
                 
                 if lat != 0 {
-                    // Get the values of the fields
-                    //values := []interface{}{gpsValues.Lat, gpsValues.TimeMS, gpsValues.TimeUS} // Update this as per your requirement
-
                     // Create a dictionary from fieldnames and values
                     entryDict := make(map[string]interface{})
                     for i, field := range gpsValues.FieldNames {
@@ -117,6 +114,21 @@ func extractData(filename string) ([]map[string]interface{}, error) {
     return data, nil
 }
 
+func getTimeFromGPS(gpsData map[string]interface{}) time.Time {
+    // Extract the GPS week and time in milliseconds
+    gpsWeek := gpsData["Week"].(int)
+    gpsTimeMS := gpsData["TimeMS"].(int)
+
+    // Calculate the total seconds since the GPS epoch (1980-01-06)
+    gpsEpoch := time.Date(1980, 1, 6, 0, 0, 0, 0, time.UTC)
+    totalSeconds := float64(gpsWeek*604800) + float64(gpsTimeMS)/1000.0
+
+    // Add the total seconds to the GPS epoch to get the actual time
+    gpsTime := gpsEpoch.Add(time.Duration(totalSeconds) * time.Second)
+
+    return gpsTime
+}
+
 func main() {
     defer func() {
         if r := recover(); r != nil {
@@ -133,6 +145,11 @@ func main() {
         fmt.Println(err)
         return
     }
+
+    // how to get the datetime out of the data
+    firstElement := data[0]
+    gpsTime := getTimeFromGPS(firstElement)
+    fmt.Println("GPS Time:", gpsTime)
 
     // Use the extracted data
     fmt.Println(data)

@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-
-	//"reflect"
 	"strings"
 )
 
@@ -21,7 +19,7 @@ type GPS struct {
 	GPSTime float64
     Lat     float64
     Lon     float64
-    alt     float64
+    Alt     float64
 }
 
 type DFMessage struct {
@@ -30,9 +28,6 @@ type DFMessage struct {
 	ApplyMultiplier bool
 	FieldNames      []string
 	Parent          *DFReaderBinary
-	//TimeStamp       float64
-	//TimeMS          float64
-	//StartTime       float64
 }
 
 func NewDFMessage(fmt *DFFormat, elements []interface{}, applyMultiplier bool, reader *DFReaderBinary) *DFMessage {
@@ -42,9 +37,6 @@ func NewDFMessage(fmt *DFFormat, elements []interface{}, applyMultiplier bool, r
 		ApplyMultiplier: applyMultiplier,
 		FieldNames:      fmt.Columns,
 		Parent:          reader,
-		//TimeStamp:       timestamp,
-		//TimeMS:          timeMS,
-		//StartTime: 0,
 	}
 }
 

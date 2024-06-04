@@ -112,7 +112,6 @@ func NewDFFormat(typ int, name string, flen int, format string, columns []string
     return df, nil
 }
 
-//test
 func (df *DFFormat) getUnpacker() func([]byte) ([]interface{}, error) {
     return func(data []byte) ([]interface{}, error) {
         if len(data) < df.Len-3 {
@@ -221,21 +220,6 @@ func (df *DFFormat) getUnpacker() func([]byte) ([]interface{}, error) {
                 }
                 elements = append(elements, val)
             case 's':
-                /*var lenStr int
-                for j := i + 1; j < len(df.MsgStruct); j++ {
-                    switch df.MsgStruct[j] {
-                    case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-                        lenStr = lenStr*10 + int(df.MsgStruct[j]-'0')
-                        i++
-                    default:
-                        break
-                    }
-                }
-                str := make([]byte, lenStr)
-                if err := binary.Read(reader, binary.LittleEndian, &str); err != nil {
-                    return nil, err
-                }
-                elements = append(elements, str)*/
                 var strSize int
                 switch df.MsgStruct[i+1] {
                 case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
@@ -263,7 +247,6 @@ func (df *DFFormat) getUnpacker() func([]byte) ([]interface{}, error) {
         return elements, nil
     }
 }
-//end test
 
 func (df *DFFormat) SetUnitIds(unit_ids *string) {
     if unit_ids == nil {
