@@ -687,7 +687,6 @@ func (reader *DFReaderBinary) ParseNext() (*DFMessage, error) {
     reader.addMsg(m)
 
     reader.Percent = 100.0 * float64(reader.offset) / float64(reader.dataLen)
-    fmt.Println(reader.Percent)
 
     return m, nil
 

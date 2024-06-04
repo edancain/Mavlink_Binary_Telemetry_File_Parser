@@ -19,6 +19,9 @@ type GPS struct {
 	TimeMS  float64
 	T       float64
 	GPSTime float64
+    Lat     float64
+    Lon     float64
+    alt     float64
 }
 
 type DFMessage struct {

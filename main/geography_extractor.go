@@ -24,6 +24,8 @@ func extractData(filename string) ([]map[string]interface{}, error) {
         return nil, err
     }
 
+    var data []map[string]interface{}
+
     if strings.HasSuffix(filename, ".log") {
         // dfreader = DFReader_text(filename)
         fmt.Println("log file")
@@ -48,7 +50,7 @@ func extractData(filename string) ([]map[string]interface{}, error) {
         msg := dfreader.Messages
         count := 0
         messageCount := 0
-        var data []map[string]interface{}
+        
 
         // Get the values of the attributes
         if gpsValues, ok := dfreader.Messages["GPS"]; ok {
@@ -57,45 +59,51 @@ func extractData(filename string) ([]map[string]interface{}, error) {
         }
         
         // Create a set to store seen times
-        //seenTimes := make(map[int64]bool)
+        seenTimes := make(map[int]bool)
 
         // Iterate over all messages
         for msg != nil {
             messageCount++
             if gpsValues, ok := msg["GPS"]; ok {
-                lat:= gpsValues.GetAttr("Lat").(int)
-                fmt.Println(lat)
                 
-                /*if lat != 0 {
+                lat := float64(gpsValues.GetAttr("Lat").(int)) / 1e7
+                lon := float64(gpsValues.GetAttr("Lng").(int)) / 1e7
+                fmt.Println(lat, lon)
+                
+                if lat != 0 {
                     // Get the values of the fields
-                    values := []interface{}{gpsValues.Lat, gpsValues.TimeMS, gpsValues.TimeUS} // Update this as per your requirement
+                    //values := []interface{}{gpsValues.Lat, gpsValues.TimeMS, gpsValues.TimeUS} // Update this as per your requirement
 
                     // Create a dictionary from fieldnames and values
                     entryDict := make(map[string]interface{})
-                    for i, field := range fieldnames {
-                        entryDict[field] = values[i]
+                    for i, field := range gpsValues.FieldNames {
+                        if field == "Lat" || field == "Lng"{
+                            entryDict[field] = float64(gpsValues.Elements[i].(int)) / 1e7
+                        } else {
+                            entryDict[field] = gpsValues.Elements[i]
+                        }  
                     }
 
                     // Check if this time has been seen before
-                    time := entryDict["TimeMS"].(int64)
+                    time := entryDict["TimeMS"].(int)
                     if !seenTimes[time] {
                         // Add this time to the set of seen times
                         seenTimes[time] = true
                         data = append(data, entryDict)
                         count++
                     }
-                }*/
+                }
             }
 
             // Get the next message
             dfreader.ParseNext()
+            msg = dfreader.Messages
             fmt.Printf("%.1f%%\n", dfreader.Percent)
             fmt.Printf("%d unique records\n", count)
+            fmt.Printf("\n")
             if dfreader.Percent > 99.99 {
                 break
             }
-
-            msg = dfreader.Messages
         }
 
         fmt.Println("Total messages:", messageCount)
@@ -106,7 +114,7 @@ func extractData(filename string) ([]map[string]interface{}, error) {
         }
 
     }
-    return nil, nil//data, nil
+    return data, nil
 }
 
 func main() {
