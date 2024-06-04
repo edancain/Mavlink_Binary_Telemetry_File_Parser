@@ -13,7 +13,6 @@ type GPSValues struct {
     Lat      float64
     TimeMS   int64
     TimeUS   int64
-    // Add other fields as per your requirement
 }
 
 
@@ -51,14 +50,10 @@ func extractData(filename string) ([]map[string]interface{}, error) {
         count := 0
         messageCount := 0
         
-
-        // Get the values of the attributes
-        if gpsValues, ok := dfreader.Messages["GPS"]; ok {
-            fieldnames := gpsValues.FieldNames
-            fmt.Println(fieldnames)
-        }
-        
-        // Create a set to store seen times
+        // Create a set to store seen times. This is used to test whether the time value has been 
+        // seen before. If it hasn't it is added and the GPS data is added to data map. Otherwise
+        // we will have multiple copies of the same position. This is due to the write rate for 
+        // other sensors within the Pixhawk. i.e. IMU.
         seenTimes := make(map[int]bool)
 
         // Iterate over all messages

@@ -67,7 +67,7 @@ type DFReaderBinary struct {
 	HEAD2      byte
 	//unpackers  map[byte]UnpackerFunc
 	unpackers    map[int]func([]byte) ([]interface{}, error)
-	formats      map[int]*DFFormat
+	formats      map[int]*DataFileFormat
 	zeroTimeBase bool
 	verbose      bool
 	prevType     int
@@ -83,47 +83,47 @@ type DFReaderBinary struct {
 	mavType      MavType
 	params       map[string]interface{}
 	flightmodes  []interface{}
-	Messages     map[string]*DFMessage
+	Messages     map[string]*DataFileMessage
 	Percent      float64
-    clock        *DFReaderClockGPSInterpolated
+	clock        *GPSInterpolatedClock
 	//flightmode   string
-	indexes []int
-	dataLen int
-    binaryFormats []string
+	indexes       []int
+	dataLen       int
+	binaryFormats []string
 }
 
 func NewDFReaderBinary(filename string, zeroTimeBase bool, progressCallback func(int)) (*DFReaderBinary, error) {
-    
-    var columns = []string{"Type","Length","Name","Format","Columns"}
-    df, err := NewDFFormat(0x80, "FMT", 89, "BBnNZ", columns, nil)
-    if err != nil {
-        return nil, err
-    }
+
+	var columns = []string{"Type", "Length", "Name", "Format", "Columns"}
+	df, err := NewDataFileFormat(0x80, "FMT", 89, "BBnNZ", columns, nil)
+	if err != nil {
+		return nil, err
+	}
 
 	reader := &DFReaderBinary{
-		HEAD1:     0xA3,
-		HEAD2:     0x95,
-		verbose:   false,
-		offset:    0,
-		remaining: 0,
-		typeNums:  nil,
+		HEAD1:        0xA3,
+		HEAD2:        0x95,
+		verbose:      false,
+		offset:       0,
+		remaining:    0,
+		typeNums:     nil,
 		zeroTimeBase: zeroTimeBase,
 		prevType:     0,
 		mavType:      MavTypeGeneric,
 		params:       make(map[string]interface{}),
 		flightmodes:  nil,
-		Messages:     map[string]*DFMessage{"MAV": nil, "__MAV__": nil},
+		Messages:     map[string]*DataFileMessage{"MAV": nil, "__MAV__": nil},
 		Percent:      0.0,
-        clock: nil,
-        formats:       make(map[int]*DFFormat),
+		clock:        nil,
+		formats:      make(map[int]*DataFileFormat),
 	}
-    reader.formats[df.Typ] = df
-    reader.binaryFormats = []string{}
+	reader.formats[df.Typ] = df
+	reader.binaryFormats = []string{}
 
-    reader.fileHandle, err = os.Open(filename)
-    if err != nil {
-        panic(err)
-    }
+	reader.fileHandle, err = os.Open(filename)
+	if err != nil {
+		panic(err)
+	}
 
 	fileInfo, err := reader.fileHandle.Stat()
 	if err != nil {
@@ -132,7 +132,7 @@ func NewDFReaderBinary(filename string, zeroTimeBase bool, progressCallback func
 
 	reader.dataLen = int(fileInfo.Size()) //5510271
 
-    reader.unpackers = make(map[int]func([]byte) ([]interface{}, error))
+	reader.unpackers = make(map[int]func([]byte) ([]interface{}, error))
 
 	reader.dataMap, err = mmap.MapRegion(reader.fileHandle, int(reader.dataLen), mmap.RDONLY, 0, 0)
 
@@ -166,13 +166,13 @@ func (d *DFReaderBinary) initClock() {
 	d._rewind()
 
 	d.InitClockGPSInterpolated()
-    var firstUsStamp int
-    firstUsStamp = 0
-    var firstMsStamp int
-    firstMsStamp = 0
-    count := 0
+	var firstUsStamp int
+	firstUsStamp = 0
+	var firstMsStamp int
+	firstMsStamp = 0
+	count := 0
 	for {
-        count += 1
+		count += 1
 		message, err := d.recvMsg()
 		if err != nil {
 			break
@@ -180,59 +180,59 @@ func (d *DFReaderBinary) initClock() {
 
 		msgType := message.GetType()
 
-        if firstUsStamp == 0{
-            usTimeStamp, ok := message.GetAttr("TimeUS").(int)
-            if ok {
-                if usTimeStamp != 0 {
-                    if firstUsStamp == 0 {
-                        firstUsStamp = usTimeStamp
-                    }
-                }
-            }
-        }
+		if firstUsStamp == 0 {
+			usTimeStamp, ok := message.GetAttr("TimeUS").(int)
+			if ok {
+				if usTimeStamp != 0 {
+					if firstUsStamp == 0 {
+						firstUsStamp = usTimeStamp
+					}
+				}
+			}
+		}
 
-        if firstMsStamp == 0 && msgType != "GPS" && msgType != "GPS2" {
-            msTimeStamp, ok := message.GetAttr("TimeMS").(int)
-            if ok {
-                if msTimeStamp != 0 {
-                        firstMsStamp = msTimeStamp
-                }
-            }
-        }
-    
+		if firstMsStamp == 0 && msgType != "GPS" && msgType != "GPS2" {
+			msTimeStamp, ok := message.GetAttr("TimeMS").(int)
+			if ok {
+				if msTimeStamp != 0 {
+					firstMsStamp = msTimeStamp
+				}
+			}
+		}
+
 		if msgType == "GPS" || msgType == "GPS2" {
-            timeUS, _ := message.GetAttr("TimeUS").(int)
-            gwk, _ := message.GetAttr("GWk").(int)
+			timeUS, _ := message.GetAttr("TimeUS").(int)
+			gwk, _ := message.GetAttr("GWk").(int)
 
-            if timeUS != 0 && gwk != 0 {
-                if !d.zeroTimeBase {
-                    d.clock.FindTimeBase(&message, firstMsStamp)// everything-usec-timestamped
-                }
-                break;
-            }
+			if timeUS != 0 && gwk != 0 {
+				if !d.zeroTimeBase {
+					d.clock.FindTimeBase(&message, firstMsStamp) // everything-usec-timestamped
+				}
+				break
+			}
 
-            t, _ := message.GetAttr("T").(int)
-            week, _ := message.GetAttr("Week").(int)
+			t, _ := message.GetAttr("T").(int)
+			week, _ := message.GetAttr("Week").(int)
 
-            if t != 0 && week != 0 {
-                if firstMsStamp == 0 {
-                    firstMsStamp = t
-                }
+			if t != 0 && week != 0 {
+				if firstMsStamp == 0 {
+					firstMsStamp = t
+				}
 
-                if !d.zeroTimeBase {
-                    d.clock.FindTimeBase(&message, firstMsStamp)
-                }
-                break
-            }
+				if !d.zeroTimeBase {
+					d.clock.FindTimeBase(&message, firstMsStamp)
+				}
+				break
+			}
 
-        }
+		}
 	}
 
 	d._rewind()
 }
 
 func (d *DFReaderBinary) InitClockGPSInterpolated() {
-	clock := NewDFReaderClockGPSInterpolated()
+	clock := NewGPSInterpolatedClock()
 	d.clock = clock
 }
 
@@ -242,7 +242,7 @@ func (reader *DFReaderBinary) _rewind() {
 	reader.typeNums = nil
 	reader.timestamp = 0
 
-	reader.Messages = map[string]*DFMessage{
+	reader.Messages = map[string]*DataFileMessage{
 		"MAV":     nil,
 		"__MAV__": nil,
 	}
@@ -363,33 +363,33 @@ func (reader *DFReaderBinary) initArrays(progressCallback func(int)) {
 			length := elements[1].(int)
 			format := nullTerm(string(elements[3].([]byte)))
 
-            // Get the byte slice from elements[4] and convert to string
-            bytesSlice, ok := elements[4].([]uint8)
-            if !ok {
-                fmt.Println("Invalid data type")
-                return 
-            }
-			 // Convert []uint8 to string array
-             var stringArray []string
-             var str string
-             for _, b := range bytesSlice {
-                 if b == 0 {
-                     if str != ""{
-                         stringArray = append(stringArray, str)
-                     }
-                     str = ""
-                     continue
-                 }
-                 str += string(b)            
-             }
-     
-             var columns = []string{}
-     
-             if len(stringArray) > 0{
-                 columns = strings.Split(stringArray[0], ",")//, ok := elements[4].(string)
-             }  
+			// Get the byte slice from elements[4] and convert to string
+			bytesSlice, ok := elements[4].([]uint8)
+			if !ok {
+				fmt.Println("Invalid data type")
+				return
+			}
+			// Convert []uint8 to string array
+			var stringArray []string
+			var str string
+			for _, b := range bytesSlice {
+				if b == 0 {
+					if str != "" {
+						stringArray = append(stringArray, str)
+					}
+					str = ""
+					continue
+				}
+				str += string(b)
+			}
 
-			mfmt, err := NewDFFormat(ftype, name, length, format, columns, reader.formats[ftype])
+			var columns = []string{}
+
+			if len(stringArray) > 0 {
+				columns = strings.Split(stringArray[0], ",") //, ok := elements[4].(string)
+			}
+
+			mfmt, err := NewDataFileFormat(ftype, name, length, format, columns, reader.formats[ftype])
 			if err != nil {
 				// Handle the error
 				continue
@@ -445,21 +445,21 @@ func (reader *DFReaderBinary) initArrays(progressCallback func(int)) {
 	reader.offset = 0
 }
 
-func (d *DFReaderBinary) recvMsg() (DFMessage, error) {
+func (d *DFReaderBinary) recvMsg() (DataFileMessage, error) {
 	msg, err := d.ParseNext()
 	if err != nil {
-		return DFMessage{}, err
+		return DataFileMessage{}, err
 	}
 	return *msg, nil
 }
 
-func (reader *DFReaderBinary) ParseNext() (*DFMessage, error) {
+func (reader *DFReaderBinary) ParseNext() (*DataFileMessage, error) {
 	var skipType []byte
-	skipStart:= 0
+	skipStart := 0
 	//var hdr mmap.MMap
 	var msgType int
 	for {
-		if reader.dataLen - reader.offset < 3 {
+		if reader.dataLen-reader.offset < 3 {
 			//if reader.offset >= len(reader.dataMap) {
 			//	return nil, io.EOF
 			//}
@@ -488,10 +488,10 @@ func (reader *DFReaderBinary) ParseNext() (*DFMessage, error) {
 			}
 		}
 
-        if skipType == nil{
-            skipType = hdr 
-            skipStart = reader.offset
-        }
+		if skipType == nil {
+			skipType = hdr
+			skipStart = reader.offset
+		}
 
 		reader.offset++
 		reader.remaining--
@@ -521,51 +521,51 @@ func (reader *DFReaderBinary) ParseNext() (*DFMessage, error) {
 		return reader.ParseNext()
 	}*/
 
-	body := reader.dataMap[reader.offset : reader.offset + dfmt.Len-3]
+	body := reader.dataMap[reader.offset : reader.offset+dfmt.Len-3]
 	var elements []interface{}
 
-    if _, ok := reader.unpackers[msgType]; !ok {
-        if msgType == 130 || msgType == 144 {
-            fmt.Println("here")
-        }
-        if dfmt.MsgStruct == "<BB4s16s64s" {
-            fmt.Println("stop here")
-        }
+	if _, ok := reader.unpackers[msgType]; !ok {
+		if msgType == 130 || msgType == 144 {
+			fmt.Println("here")
+		}
+		if dfmt.MsgStruct == "<BB4s16s64s" {
+			fmt.Println("stop here")
+		}
 
-        unpacker := dfmt.getUnpacker()
+		unpacker := dfmt.getUnpacker()
 
-        reader.unpackers[msgType] = unpacker
-    }
-    dfmt.MsgStruct = "<" + dfmt.Format
+		reader.unpackers[msgType] = unpacker
+	}
+	dfmt.MsgStruct = "<" + dfmt.Format
 
-    if dfmt.Format == "BIHBcLLeeEefI"{
-        fmt.Println("stop here")
-    }
-    elements, err := reader.unpackers[msgType](body)
-    if err != nil {
-        if reader.remaining < 528 {
-            // We can have garbage at the end of an APM2 log
-            return nil, nil
-        }
-        // We should also cope with other corruption; logs
-        // transferred via DataFlash_MAVLink may have blocks of 0s
-        // in them, for example
-        fmt.Fprintf(os.Stderr, "Failed to parse %s/%s with len %d (remaining %d)\n",
-            dfmt.Name, dfmt.MsgStruct, len(body), reader.remaining)
-    }
+	if dfmt.Format == "BIHBcLLeeEefI" {
+		fmt.Println("stop here")
+	}
+	elements, err := reader.unpackers[msgType](body)
+	if err != nil {
+		if reader.remaining < 528 {
+			// We can have garbage at the end of an APM2 log
+			return nil, nil
+		}
+		// We should also cope with other corruption; logs
+		// transferred via DataFlash_MAVLink may have blocks of 0s
+		// in them, for example
+		fmt.Fprintf(os.Stderr, "Failed to parse %s/%s with len %d (remaining %d)\n",
+			dfmt.Name, dfmt.MsgStruct, len(body), reader.remaining)
+	}
 
-    if elements == nil {
-        return reader.ParseNext()
-    }
+	if elements == nil {
+		return reader.ParseNext()
+	}
 
-    name := dfmt.Name
+	name := dfmt.Name
 	for _, aIndex := range dfmt.AIndexes {
 		if aIndex < len(elements) {
 			elements[aIndex] = bytesToInt16Slice(elements[aIndex].([]byte))
 		}
 	}
 
-    if name == "FMT" {
+	if name == "FMT" {
 		var ftype int
 		// Get the uint8 value from elements[0]
 		ftype, ok := elements[0].(int)
@@ -594,32 +594,32 @@ func (reader *DFReaderBinary) ParseNext() (*DFMessage, error) {
 		format := string(bytes.TrimRight(formatBytes, "\x00"))
 
 		// Get the byte slice from elements[4] and convert to string
-        bytesSlice, ok := elements[4].([]uint8)
-        if !ok {
-            fmt.Println("Invalid data type")
-            return nil, nil
-        }
+		bytesSlice, ok := elements[4].([]uint8)
+		if !ok {
+			fmt.Println("Invalid data type")
+			return nil, nil
+		}
 
-        // Convert []uint8 to string array
-        var stringArray []string
-        var str string
-        for _, b := range bytesSlice {
-            if b == 0 {
-                if str != ""{
-                    stringArray = append(stringArray, str)
-                }
-                str = ""
-                continue
-            }
-            str += string(b)            
-        }
+		// Convert []uint8 to string array
+		var stringArray []string
+		var str string
+		for _, b := range bytesSlice {
+			if b == 0 {
+				if str != "" {
+					stringArray = append(stringArray, str)
+				}
+				str = ""
+				continue
+			}
+			str += string(b)
+		}
 
-        var columns = []string{}
+		var columns = []string{}
 
-        if len(stringArray) > 0{
-            columns = strings.Split(stringArray[0], ",")
-        }
-		
+		if len(stringArray) > 0 {
+			columns = strings.Split(stringArray[0], ",")
+		}
+
 		length, ok := elements[1].(int)
 		if !ok {
 			// Handle the case where elements[1] is not a uint8
@@ -627,61 +627,61 @@ func (reader *DFReaderBinary) ParseNext() (*DFMessage, error) {
 			return reader.ParseNext()
 		}
 
-        if name == "GPS"{
-            fmt.Println("test")
-        }
+		if name == "GPS" {
+			fmt.Println("test")
+		}
 
-		mfmt, err := NewDFFormat(ftype, name, int(length), format, columns, reader.formats[ftype])
+		mfmt, err := NewDataFileFormat(ftype, name, int(length), format, columns, reader.formats[ftype])
 		if err != nil {
 			return reader.ParseNext()
 		}
 		reader.formats[ftype] = mfmt
 	}
 
-    reader.offset += dfmt.Len - 3
-    reader.remaining = reader.dataLen - reader.offset
-    m := NewDFMessage(dfmt, elements, true, reader)
+	reader.offset += dfmt.Len - 3
+	reader.remaining = reader.dataLen - reader.offset
+	m := NewDFMessage(dfmt, elements, true, reader)
 
-    if m.Fmt.Name == "FMTU" {
-        // Add to units information
-        //FmtType := int(elements[0].(uint8))
-        //UnitIds := elements[1].([]byte)
-        //MultIds := elements[2].([]byte)
-        //if f, ok := reader.formats[byte(FmtType)]; ok {
-            //f.SetUnitIds(UnitIds)
-            //f.SetMultIds(MultIds)
-        //}
-    }
+	if m.Fmt.Name == "FMTU" {
+		// Add to units information
+		//FmtType := int(elements[0].(uint8))
+		//UnitIds := elements[1].([]byte)
+		//MultIds := elements[2].([]byte)
+		//if f, ok := reader.formats[byte(FmtType)]; ok {
+		//f.SetUnitIds(UnitIds)
+		//f.SetMultIds(MultIds)
+		//}
+	}
 
-    // Add the message to the parser
-    // You'll need to implement the _addMsg method based on your specific requirements
-    reader.addMsg(m)
+	// Add the message to the parser
+	// You'll need to implement the _addMsg method based on your specific requirements
+	reader.addMsg(m)
 
-    reader.Percent = 100.0 * float64(reader.offset) / float64(reader.dataLen)
+	reader.Percent = 100.0 * float64(reader.offset) / float64(reader.dataLen)
 
-    return m, nil
+	return m, nil
 }
 
 func (reader *DFReaderBinary) Print_binaryFormats() {
-    fmt.Println("Binary formats:")
-    for _, format := range reader.binaryFormats {
-        fmt.Println(format)
-    }
+	fmt.Println("Binary formats:")
+	for _, format := range reader.binaryFormats {
+		fmt.Println(format)
+	}
 }
 
 func addUnique(list []string, s string) []string {
-    // Create a map where the keys are the strings in the list
-    m := make(map[string]bool)
-    for _, item := range list {
-        m[item] = true
-    }
+	// Create a map where the keys are the strings in the list
+	m := make(map[string]bool)
+	for _, item := range list {
+		m[item] = true
+	}
 
-    // If the string is not in the map, add it to the list
-    if !m[s] {
-        list = append(list, s)
-    }
+	// If the string is not in the map, add it to the list
+	if !m[s] {
+		list = append(list, s)
+	}
 
-    return list
+	return list
 }
 
 func bytesToInt16Slice(b []byte) []int16 {
@@ -718,7 +718,7 @@ func (reader *DFReaderBinary) FindUnusedFormat() int {
 	return 0
 }
 
-func (reader *DFReaderBinary) AddFormat(dfmt *DFFormat) *DFFormat {
+func (reader *DFReaderBinary) AddFormat(dfmt *DataFileFormat) *DataFileFormat {
 	newType := reader.FindUnusedFormat()
 	if newType == 0 {
 		return nil
@@ -728,7 +728,7 @@ func (reader *DFReaderBinary) AddFormat(dfmt *DFFormat) *DFFormat {
 	return dfmt
 }
 
-func (d *DFReaderBinary) addMsg(m *DFMessage) {
+func (d *DFReaderBinary) addMsg(m *DataFileMessage) {
 	msgType := m.GetType()
 	d.Messages[msgType] = m
 }
