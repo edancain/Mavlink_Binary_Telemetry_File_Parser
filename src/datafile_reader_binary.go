@@ -61,30 +61,30 @@ const (
 type UnpackerFunc func([]byte) ([]interface{}, error)
 
 type BinaryDataFileReader struct {
-	fileHandle *os.File
-	dataMap    mmap.MMap
-	HEAD1      byte
-	HEAD2      byte
-	unpackers    map[int]func([]byte) ([]interface{}, error)
-	formats      map[int]*DataFileFormat
-	zeroTimeBase bool
-	verbose      bool
-	prevType     int
-	offset       int
-	remaining    int
-	offsets      [][]int
-	typeNums     []byte
-	timestamp    int
-	counts       []int
-	_count       int
-	nameToID     map[string]int
-	idToName     map[int]string
-	mavType      MavType
-	params       map[string]interface{}
-	flightmodes  []interface{}
-	Messages     map[string]*DataFileMessage
-	Percent      float64
-	clock        *GPSInterpolatedClock
+	fileHandle    *os.File
+	dataMap       mmap.MMap
+	HEAD1         byte
+	HEAD2         byte
+	unpackers     map[int]func([]byte) ([]interface{}, error)
+	formats       map[int]*DataFileFormat
+	zeroTimeBase  bool
+	verbose       bool
+	prevType      int
+	offset        int
+	remaining     int
+	offsets       [][]int
+	typeNums      []byte
+	timestamp     int
+	counts        []int
+	_count        int
+	nameToID      map[string]int
+	idToName      map[int]string
+	mavType       MavType
+	params        map[string]interface{}
+	flightmodes   []interface{}
+	Messages      map[string]*DataFileMessage
+	Percent       float64
+	clock         *GPSInterpolated
 	dataLen       int
 	binaryFormats []string
 }
@@ -203,7 +203,7 @@ func (d *BinaryDataFileReader) initClock() {
 
 			if timeUS != 0 && gwk != 0 {
 				if !d.zeroTimeBase {
-					d.clock.FindTimeBase(&message, firstMsStamp) 
+					d.clock.FindTimeBase(&message, firstMsStamp)
 				}
 				break
 			}
@@ -229,7 +229,7 @@ func (d *BinaryDataFileReader) initClock() {
 }
 
 func (d *BinaryDataFileReader) InitClockGPSInterpolated() {
-	clock := NewGPSInterpolatedClock()
+	clock := NewGPSInterpolated()
 	d.clock = clock
 }
 
