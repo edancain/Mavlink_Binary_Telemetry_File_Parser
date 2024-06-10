@@ -142,13 +142,6 @@ func NewBinaryDataFileReader(filename string, zeroTimeBase bool, progressCallbac
 	return reader, nil
 }
 
-/*func (r *DFReaderBinary) initUnpackers() {
-	r.unpackers = make(map[byte]func([]byte) ([]interface{}, error))
-	for msgType, format := range r.formats {
-		r.unpackers[msgType] = format.getUnpacker()
-	}
-}*/
-
 func (reader *BinaryDataFileReader) init(progressCallback func(int)) {
 	// Implementation of init function
 	reader.offset = 0

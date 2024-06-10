@@ -23,7 +23,6 @@ func NewGPSInterpolated() *GPSInterpolated {
 	return clock
 }
 
-// doesn't get hit
 func (clock *GPSInterpolated) RewindEvent() {
 	clock.Counts = make(map[string]int)
 	clock.CountsSinceGPS = make(map[string]int)
@@ -54,7 +53,7 @@ func (clock *GPSInterpolated) GPSTimeToTime(week int, msec int) float64 {
 	return float64(epoch) + float64(86400*7*int(week)) + float64(msec)*0.001 - 18
 }
 
-// doesn't get hit
+
 func (clock *GPSInterpolated) MessageArrived(message *DataFileMessage) {
 	msgType := message.GetType()
 	if _, ok := clock.Counts[msgType]; !ok {
@@ -74,7 +73,6 @@ func (clock *GPSInterpolated) MessageArrived(message *DataFileMessage) {
 	}
 }
 
-// doesn't get hit
 func (clock *GPSInterpolated) GPSMessageArrived(message *DataFileMessage) {
 	var gpsWeek, gpsTimems interface{}
 
@@ -82,17 +80,13 @@ func (clock *GPSInterpolated) GPSMessageArrived(message *DataFileMessage) {
 	gpsWeek = message.GetAttr("Week")
 	gpsTimems = message.GetAttr("TimeMS")
 
-	gpsWeek = message.GetAttr("Week")
-	gpsTimems = message.GetAttr("TimeMS")
 	if gpsWeek == nil {
 		// usec-style GPS message?
 		gpsWeek = message.GetAttr("GWk")
 		gpsTimems = message.GetAttr("GMS")
 		if gpsWeek == nil {
 			if message.GetAttr("GPSTime") != nil {
-				// PX4-style timestamp; we've only been called
-				// because we were speculatively created in case no
-				// better clock was found.
+				// PX4-style timestamp;
 				return
 			}
 			gpsWeek = message.GetAttr("Wk")

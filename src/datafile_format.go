@@ -25,8 +25,8 @@ var FormatToUnpackInfo = map[byte][3]interface{}{
 	'M': {"b", nil, int(0)},
 	'n': {"4s", nil, string("")},
 	'N': {"16s", nil, string("")},
-	'q': {"q", nil, int64(0)}, // Backward compat
-	'Q': {"Q", nil, int64(0)}, // Backward compat
+	'q': {"q", nil, int64(0)}, 
+	'Q': {"Q", nil, int64(0)}, 
 	'Z': {"64s", nil, string("")},
 }
 
