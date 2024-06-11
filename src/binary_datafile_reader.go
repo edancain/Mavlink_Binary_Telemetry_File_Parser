@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"io"
 
 	"github.com/edsrzf/mmap-go"
 )
@@ -127,7 +128,7 @@ func NewBinaryDataFileReader(filename string, zeroTimeBase bool, progressCallbac
 		return nil, err
 	}
 
-	reader.dataLen = int(fileInfo.Size()) //5510271
+	reader.dataLen = int(fileInfo.Size()) 
 
 	reader.unpackers = make(map[int]func([]byte) ([]interface{}, error))
 
@@ -137,7 +138,6 @@ func NewBinaryDataFileReader(filename string, zeroTimeBase bool, progressCallbac
 		panic(err)
 	}
 
-	//reader.initUnpackers()
 	reader.init(progressCallback)
 	return reader, nil
 }
@@ -652,12 +652,12 @@ func (reader *BinaryDataFileReader) ParseNext() (*DataFileMessage, error) {
 	return m, nil
 }
 
-func (reader *BinaryDataFileReader) Print_binaryFormats() {
-	fmt.Println("Binary formats:")
-	for _, format := range reader.binaryFormats {
-		fmt.Println(format)
-	}
-}
+//func (reader *BinaryDataFileReader) Print_binaryFormats() {
+//	fmt.Println("Binary formats:")
+//	for _, format := range reader.binaryFormats {
+//		fmt.Println(format)
+//	}
+//}
 
 func addUnique(list []string, s string) []string {
 	// Create a map where the keys are the strings in the list

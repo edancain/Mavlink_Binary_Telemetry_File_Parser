@@ -30,7 +30,7 @@ func extractData(filename string) ([]map[string]interface{}, error) {
 			return nil, err
 		}
 
-		dfreader.Print_binaryFormats()
+		//dfreader.Print_binaryFormats()
 
 		if _, ok := dfreader.Messages["GPS"]; !ok {
 			fmt.Println("No GPS data")
@@ -141,5 +141,5 @@ func main() {
 	fmt.Println("GPS Time:", gpsTime)
 
 	// Use the extracted data
-	fmt.Println(data)
+	//fmt.Println(data)
 }

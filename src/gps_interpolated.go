@@ -48,7 +48,7 @@ func (clock *GPSInterpolated) FindTimeBase(message *DataFileMessage, firstUsStam
 }
 
 func (clock *GPSInterpolated) GPSTimeToTime(week int, msec int) float64 {
-	// convert GPS week and TOW to a time in seconds since 1970
+	// convert GPS week and TOW (Time Of Week) to a time in seconds since 1970
 	epoch := 86400 * (10*365 + int((1980-1969)/4) + 1 + 6 - 2)
 	return float64(epoch) + float64(86400*7*int(week)) + float64(msec)*0.001 - 18
 }

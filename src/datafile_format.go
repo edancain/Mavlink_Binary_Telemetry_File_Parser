@@ -104,10 +104,10 @@ func NewDataFileFormat(typ int, name string, flen int, format string, columns []
 		}
 	}
 
-	if oldfmt != nil {
-		df.SetUnitIds(oldfmt.UnitIds)
-		df.SetMultIds(oldfmt.MultIds)
-	}
+	//if oldfmt != nil {
+	//	df.SetUnitIds(oldfmt.UnitIds)
+	//	df.SetMultIds(oldfmt.MultIds)
+	//}
 
 	return df, nil
 }
