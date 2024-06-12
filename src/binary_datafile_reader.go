@@ -59,6 +59,66 @@ const (
 	MavTypeWinch                                  // 42
 )
 
+// ArduPlane
+var modeMappingAPM = map[int]string{
+    0:  "MANUAL",
+    1:  "CIRCLE",
+    2:  "STABILIZE",
+    3:  "TRAINING",
+    4:  "ACRO",
+    5:  "FBWA",
+    6:  "FBWB",
+    7:  "CRUISE",
+    8:  "AUTOTUNE",
+    10: "AUTO",
+    11: "RTL",
+    12: "LOITER",
+    13: "TAKEOFF",
+    14: "AVOID_ADSB",
+    15: "GUIDED",
+    16: "INITIALISING",
+    17: "QSTABILIZE",
+    18: "QHOVER",
+    19: "QLOITER",
+    20: "QLAND",
+    21: "QRTL",
+    22: "QAUTOTUNE",
+    23: "QACRO",
+    24: "THERMAL",
+    25: "LOITERALTQLAND",
+}
+
+// ArduCopter
+var modeMappingACM = map[int]string{
+    0:  "STABILIZE",
+    1:  "ACRO",
+    2:  "ALT_HOLD",
+    3:  "AUTO",
+    4:  "GUIDED",
+    5:  "LOITER",
+    6:  "RTL",
+    7:  "CIRCLE",
+    8:  "POSITION",
+    9:  "LAND",
+    10: "OF_LOITER",
+    11: "DRIFT",
+    13: "SPORT",
+    14: "FLIP",
+    15: "AUTOTUNE",
+    16: "POSHOLD",
+    17: "BRAKE",
+    18: "THROW",
+    19: "AVOID_ADSB",
+    20: "GUIDED_NOGPS",
+    21: "SMART_RTL",
+    22: "FLOWHOLD",
+    23: "FOLLOW",
+    24: "ZIGZAG",
+    25: "SYSTEMID",
+    26: "AUTOROTATE",
+    27: "AUTO_RTL",
+}
+
 type UnpackerFunc func([]byte) ([]interface{}, error)
 
 type BinaryDataFileReader struct {
@@ -83,6 +143,7 @@ type BinaryDataFileReader struct {
 	mavType       MavType
 	params        map[string]interface{}
 	flightmodes   []interface{}
+	flightmode	  string
 	Messages      map[string]*DataFileMessage
 	Percent       float64
 	clock         *GPSInterpolated
@@ -90,7 +151,7 @@ type BinaryDataFileReader struct {
 	binaryFormats []string
 }
 
-func NewBinaryDataFileReader(filename string, zeroTimeBase bool, progressCallback func(int)) (*BinaryDataFileReader, error) {
+func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool, progressCallback func(int)) (*BinaryDataFileReader, error) {
 
 	var columns = []string{"Type", "Length", "Name", "Format", "Columns"}
 	df, err := NewDataFileFormat(0x80, "FMT", 89, "BBnNZ", columns, nil)
@@ -110,6 +171,7 @@ func NewBinaryDataFileReader(filename string, zeroTimeBase bool, progressCallbac
 		mavType:      MavTypeGeneric,
 		params:       make(map[string]interface{}),
 		flightmodes:  nil,
+		flightmode:   modeStringACM(0),
 		Messages:     map[string]*DataFileMessage{"MAV": nil, "__MAV__": nil},
 		Percent:      0.0,
 		clock:        nil,
@@ -118,24 +180,31 @@ func NewBinaryDataFileReader(filename string, zeroTimeBase bool, progressCallbac
 	reader.formats[df.Typ] = df
 	reader.binaryFormats = []string{}
 
-	reader.fileHandle, err = os.Open(filename)
-	if err != nil {
-		panic(err)
-	}
+	if filehandle, ok := file.(*os.File); ok {
+		reader.fileHandle = filehandle
 
-	fileInfo, err := reader.fileHandle.Stat()
-	if err != nil {
-		return nil, err
-	}
+		fileInfo, err := reader.fileHandle.Stat()
+		if err != nil {
+			return nil, err
+		}
 
-	reader.dataLen = int(fileInfo.Size()) 
+		reader.dataLen = int(fileInfo.Size()) 
 
-	reader.unpackers = make(map[int]func([]byte) ([]interface{}, error))
+		reader.unpackers = make(map[int]func([]byte) ([]interface{}, error))
 
-	reader.dataMap, err = mmap.MapRegion(reader.fileHandle, int(reader.dataLen), mmap.RDONLY, 0, 0)
+		reader.dataMap, err = mmap.MapRegion(reader.fileHandle, int(reader.dataLen), mmap.RDONLY, 0, 0)
 
-	if err != nil {
-		panic(err)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		reader.dataLen = dataLen
+
+		reader.dataMap = make([]byte, dataLen)
+		_, err := io.ReadFull(file, reader.dataMap)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	reader.init(progressCallback)
@@ -721,4 +790,53 @@ func (reader *BinaryDataFileReader) AddFormat(dfmt *DataFileFormat) *DataFileFor
 func (d *BinaryDataFileReader) addMsg(m *DataFileMessage) {
 	msgType := m.GetType()
 	d.Messages[msgType] = m
+
+	message := m.GetMessage()
+	if msgType == "MSG" && message != "" {
+		if strings.Contains(message, "Rover") {
+			d.mavType = MavTypeGroundRover 
+		} else if strings.Contains(message, "Plane") {
+			d.mavType = MavTypeFixedWing 
+		} else if strings.Contains(message, "Copter") {
+			d.mavType = MavTypeQuadrotor 
+		} else if strings.HasPrefix(message, "Antenna") {
+			d.mavType = MavTypeAntennaTracker 
+		} else if strings.Contains(message, "ArduSub") {
+			d.mavType = MavTypeSubmarine 
+		} else if strings.Contains(message, "Blimp") {
+			d.mavType = MavTypeAirship
+		}
+	}
+
+	if msgType == "MODE" {
+		mode := m.GetMode()
+		if mode != -1 {
+			d.flightmode = modeStringACM(mode)
+		} else {
+			d.flightmode = "UNKNOWN"
+		}
+	}
+
+	//if msgType == "STAT" && contains(m.FieldNames, "MainState") {
+	//	d.flightmode = m.MainState // Placeholder for px4(m.MainState)
+	//	}
+}
+
+func modeMappingByNumber(mavType string) map[int]string {
+	// Implement this function 
+	return nil
+}
+
+func modeStringACM(modeNumber int) string {
+	if mode, ok := modeMappingACM[modeNumber]; ok {
+		return mode
+	}
+	return fmt.Sprintf("Mode(%d)", modeNumber)
+}
+
+func modeStringAPM(modeNumber int) string {
+	if mode, ok := modeMappingAPM[modeNumber]; ok {
+		return mode
+	}
+	return fmt.Sprintf("Mode(%d)", modeNumber)
 }

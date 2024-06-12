@@ -262,3 +262,36 @@ func (m *DataFileMessage) GetItem(key int) *DataFileMessage {
 	}
 	return m.Parent.Messages[k]
 }
+
+func (m *DataFileMessage) GetMessage() string {
+	for i, field := range m.FieldNames {
+		if field == "Message" {
+			return m.Elements[i].(string)
+		}
+	}
+	return ""
+}
+
+func (m *DataFileMessage) GetMode() int {
+	for i, field := range m.FieldNames {
+		if field == "Mode" {
+			return m.Elements[i].(int)
+		}
+
+		if field == "ModeNum" {
+			return m.Elements[i].(int)
+		}
+	}
+	return -1
+}
+
+
+
+
+
+
+
+
+
+
+
