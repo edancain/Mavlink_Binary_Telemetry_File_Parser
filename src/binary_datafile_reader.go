@@ -140,7 +140,7 @@ type BinaryDataFileReader struct {
 	_count        int
 	nameToID      map[string]int
 	idToName      map[int]string
-	mavType       MavType
+	MavType       MavType
 	params        map[string]interface{}
 	flightmodes   []interface{}
 	flightmode	  string
@@ -168,7 +168,7 @@ func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool, pro
 		typeNums:     nil,
 		zeroTimeBase: zeroTimeBase,
 		prevType:     0,
-		mavType:      MavTypeGeneric,
+		MavType:      MavTypeGeneric,
 		params:       make(map[string]interface{}),
 		flightmodes:  nil,
 		flightmode:   modeStringACM(0),
@@ -207,11 +207,11 @@ func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool, pro
 		}
 	}
 
-	reader.init(progressCallback)
+	reader.init()
 	return reader, nil
 }
 
-func (reader *BinaryDataFileReader) init(progressCallback func(int)) {
+func (reader *BinaryDataFileReader) init() {
 	// Implementation of init function
 	reader.offset = 0
 	reader.remaining = reader.dataLen
@@ -232,6 +232,7 @@ func (d *BinaryDataFileReader) initClock() {
 	count := 0
 	for {
 		count += 1
+		fmt.Println(count)
 		message, err := d.recvMsg()
 		if err != nil {
 			break
@@ -839,4 +840,8 @@ func modeStringAPM(modeNumber int) string {
 		return mode
 	}
 	return fmt.Sprintf("Mode(%d)", modeNumber)
+}
+
+func progressCallback(progress int) {
+	fmt.Printf("Progress: %d%%\n", progress)
 }

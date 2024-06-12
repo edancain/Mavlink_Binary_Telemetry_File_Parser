@@ -266,7 +266,14 @@ func (m *DataFileMessage) GetItem(key int) *DataFileMessage {
 func (m *DataFileMessage) GetMessage() string {
 	for i, field := range m.FieldNames {
 		if field == "Message" {
-			return m.Elements[i].(string)
+			// Check if the element is of type []uint8
+			if byteArray, ok := m.Elements[i].([]uint8); ok {
+				// Convert the []uint8 to a string
+				str := string(byteArray)
+				// Trim the string at the first null character
+				str = nullTerm(str)
+				return str
+			}
 		}
 	}
 	return ""
