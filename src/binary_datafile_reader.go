@@ -795,17 +795,17 @@ func (d *BinaryDataFileReader) addMsg(m *DataFileMessage) {
 	message := m.GetMessage()
 	if msgType == "MSG" && message != "" {
 		if strings.Contains(message, "Rover") {
-			d.mavType = MavTypeGroundRover 
+			d.MavType = MavTypeGroundRover 
 		} else if strings.Contains(message, "Plane") {
-			d.mavType = MavTypeFixedWing 
+			d.MavType = MavTypeFixedWing 
 		} else if strings.Contains(message, "Copter") {
-			d.mavType = MavTypeQuadrotor 
+			d.MavType = MavTypeQuadrotor 
 		} else if strings.HasPrefix(message, "Antenna") {
-			d.mavType = MavTypeAntennaTracker 
+			d.MavType = MavTypeAntennaTracker 
 		} else if strings.Contains(message, "ArduSub") {
-			d.mavType = MavTypeSubmarine 
+			d.MavType = MavTypeSubmarine 
 		} else if strings.Contains(message, "Blimp") {
-			d.mavType = MavTypeAirship
+			d.MavType = MavTypeAirship
 		}
 	}
 

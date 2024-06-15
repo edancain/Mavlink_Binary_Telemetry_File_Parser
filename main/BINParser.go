@@ -96,7 +96,7 @@ func (p *BINParser)extractData(file io.Reader) error {
 
 	var zeroTimeBase = false
 
-	dfreader, err := src.NewBinaryDataFileReader(file, dataLen, zeroTimeBase, nil )
+	dfreader, err := fileparser.NewBinaryDataFileReader(file, dataLen, zeroTimeBase, nil )
 	if err != nil {
 		return fmt.Errorf("failed to create binary data file reader: %v", err)
 	}
