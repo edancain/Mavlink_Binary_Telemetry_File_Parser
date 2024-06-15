@@ -9,7 +9,7 @@ import (
 	"time"
 
 	//"github.com/edancain/telemetry_parser/src"
-	"github.com/edancain/telemetry_parser/tree/main/fileparser"
+	"github.com/edancain/telemetry_parser/fileparser"
 
 	"github.com/peterstace/simplefeatures/geom"
 )
@@ -123,8 +123,8 @@ func (p *BINParser)extractData(file io.Reader) error {
 		messageCount++
 		if gpsValues, ok := msg["GPS"]; ok {
 
-			lat := float64(gpsValues.GetAttr("Lat").(int)) / 1e7
-			lon := float64(gpsValues.GetAttr("Lng").(int)) / 1e7
+			lat := 1 // float64(gpsValues.GetAttr("Lat").(int)) / 1e7
+			lon := 1 // float64(gpsValues.GetAttr("Lng").(int)) / 1e7
 
 			if lat != 0 && lon != 0{
 				// Create a dictionary from fieldnames and values
