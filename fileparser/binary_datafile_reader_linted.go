@@ -1,4 +1,4 @@
-package src
+package fileparser
 
 import (
 	"bytes"
