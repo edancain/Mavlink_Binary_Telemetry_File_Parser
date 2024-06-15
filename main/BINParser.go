@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/edancain/telemetry_parser/fileparser"
+	"github.com/edancain/telemetry_parser/"
 	"github.com/peterstace/simplefeatures/geom"
 )
 
