@@ -138,8 +138,6 @@ type BinaryDataFileReader struct {
 	timestamp     int
 	counts        []int
 	_count        int
-	nameToID      map[string]int
-	idToName      map[int]string
 	MavType       MavType
 	params        map[string]interface{}
 	flightmodes   []interface{}
@@ -151,14 +149,17 @@ type BinaryDataFileReader struct {
 	binaryFormats []string
 }
 
+// NewBinaryDataFileReader creates a new reader for binary data files
 func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool, progressCallback func(int)) (*BinaryDataFileReader, error) {
-
+	// Defining columns for the data file format
 	var columns = []string{"Type", "Length", "Name", "Format", "Columns"}
+
 	df, err := NewDataFileFormat(0x80, "FMT", 89, "BBnNZ", columns, nil)
 	if err != nil {
 		return nil, err
 	}
 
+	// Initialize the BinaryDataFileReader with default values
 	reader := &BinaryDataFileReader{
 		HEAD1:        0xA3,
 		HEAD2:        0x95,
@@ -177,10 +178,21 @@ func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool, pro
 		clock:        nil,
 		formats:      make(map[int]*DataFileFormat),
 	}
+
+	/* Add the initial format to the reader's formats map
+ 	NB: Bootstrapping the format parsing:
+	The initial format added here is typically the "FMT" (Format) message format. This is crucial 
+	because the "FMT" messages themselves define the structure of all other message types in the binary data file.
+	Self-describing data: Many binary telemetry or log formats are self-describing, meaning they contain metadata 
+	about their own structure. The "FMT" message is the key to understanding this structure.
+	*/
+
 	reader.formats[df.Typ] = df
 	reader.binaryFormats = []string{}
 
+	// Handle file input: either as a file or a byte slice
 	if filehandle, ok := file.(*os.File); ok {
+		// If it's a file, memory map it for efficient reading
 		reader.fileHandle = filehandle
 
 		fileInfo, err := reader.fileHandle.Stat()
@@ -198,6 +210,7 @@ func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool, pro
 			return nil, err
 		}
 	} else {
+		// If it's not a file, read the data into a byte slice
 		reader.dataLen = dataLen
 
 		reader.dataMap = make([]byte, dataLen)
@@ -207,24 +220,25 @@ func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool, pro
 		}
 	}
 
+	// Initialize the reader
 	reader.init()
 	return reader, nil
 }
 
 func (reader *BinaryDataFileReader) init() {
-	// Implementation of init function
 	reader.offset = 0
 	reader.remaining = reader.dataLen
 	reader.prevType = 0
 	reader.initClock()
-	reader._rewind()
+	reader.rewind()
 	reader.initArrays(progressCallback)
 }
 
-func (d *BinaryDataFileReader) initClock() {
-	d._rewind()
+// initClock initializes the clock for timestamp handling, this is crucial for GPS data handling
+func (reader *BinaryDataFileReader) initClock() {
+	reader.rewind()
 
-	d.InitClockGPSInterpolated()
+	reader.InitClockGPSInterpolated()
 	var firstUsStamp int
 	firstUsStamp = 0
 	var firstMsStamp int
@@ -233,7 +247,7 @@ func (d *BinaryDataFileReader) initClock() {
 	for {
 		count += 1
 		fmt.Println(count)
-		message, err := d.recvMsg()
+		message, err := reader.recvMsg()
 		if err != nil {
 			break
 		}
@@ -265,8 +279,8 @@ func (d *BinaryDataFileReader) initClock() {
 			gwk, _ := message.GetAttr("GWk").(int)
 
 			if timeUS != 0 && gwk != 0 {
-				if !d.zeroTimeBase {
-					d.clock.FindTimeBase(&message, firstMsStamp)
+				if !reader.zeroTimeBase {
+					reader.clock.FindTimeBase(&message, firstMsStamp)
 				}
 				break
 			}
@@ -279,24 +293,23 @@ func (d *BinaryDataFileReader) initClock() {
 					firstMsStamp = t
 				}
 
-				if !d.zeroTimeBase {
-					d.clock.FindTimeBase(&message, firstMsStamp)
+				if !reader.zeroTimeBase {
+					reader.clock.FindTimeBase(&message, firstMsStamp)
 				}
 				break
 			}
-
 		}
 	}
-
-	d._rewind()
+	reader.rewind()
 }
 
-func (d *BinaryDataFileReader) InitClockGPSInterpolated() {
+func (reader *BinaryDataFileReader) InitClockGPSInterpolated() {
 	clock := NewGPSInterpolated()
-	d.clock = clock
+	reader.clock = clock
 }
 
-func (reader *BinaryDataFileReader) _rewind() {
+// resets the reader to the beginning of the data
+func (reader *BinaryDataFileReader) rewind() {
 	reader.offset = 0
 	reader.remaining = reader.dataLen
 	reader.typeNums = nil
@@ -319,16 +332,15 @@ func (reader *BinaryDataFileReader) _rewind() {
 }
 
 func (reader *BinaryDataFileReader) Rewind() {
-	reader._rewind()
+	reader.rewind()
 }
 
+// initializes arrays for fast message matching
 func (reader *BinaryDataFileReader) initArrays(progressCallback func(int)) {
-	//'''initialise arrays for fast recv_match()'''
+	// Initialize arrays for storing message offsets and counts
 	reader.offsets = make([][]int, 256)
 	reader.counts = make([]int, 256)
 	reader._count = 0
-	reader.nameToID = make(map[string]int)
-	reader.idToName = make(map[int]string)
 	typeInstances := make(map[int]map[string]struct{})
 
 	for i := 0; i < 256; i++ {
@@ -350,7 +362,7 @@ func (reader *BinaryDataFileReader) initArrays(progressCallback func(int)) {
 		lengths[i] = -1
 	}
 
-	for ofs+3 < reader.dataLen {
+	for ofs + 3 < reader.dataLen {
 		hdr := reader.dataMap[ofs : ofs+3]
 		if int(hdr[0]) != HEAD1 || int(hdr[1]) != HEAD2 {
 			// avoid end of file garbage, 528 bytes has been use consistently throughout this implementation
@@ -381,7 +393,6 @@ func (reader *BinaryDataFileReader) initArrays(progressCallback func(int)) {
 			dfmt, ok := reader.formats[mtype]
 			if !ok {
 				// Handle the case when the key is not found
-				//fmt.Fprintf("Key %x not found in formats\n", mtype)
 				continue
 			}
 			lengths[mtype] = dfmt.Len
@@ -411,7 +422,6 @@ func (reader *BinaryDataFileReader) initArrays(progressCallback func(int)) {
 				break
 			}
 
-			//dfmt := reader.formats[mtype]
 			elements, err := reader.unpackers[mtype](body)
 			if err != nil {
 				// Handle the error
@@ -456,8 +466,6 @@ func (reader *BinaryDataFileReader) initArrays(progressCallback func(int)) {
 			}
 
 			reader.formats[ftype] = mfmt
-			reader.nameToID[mfmt.Name] = mfmt.Typ
-			reader.idToName[mfmt.Typ] = mfmt.Name
 			if mfmt.Name == "FMTU" {
 				fmtuType = mfmt.Typ
 			}
@@ -516,13 +524,9 @@ func (d *BinaryDataFileReader) recvMsg() (DataFileMessage, error) {
 func (reader *BinaryDataFileReader) ParseNext() (*DataFileMessage, error) {
 	var skipType []byte
 	skipStart := 0
-	//var hdr mmap.MMap
 	var msgType int
 	for {
 		if reader.dataLen-reader.offset < 3 {
-			//if reader.offset >= len(reader.dataMap) {
-			//	return nil, io.EOF
-			//}
 			return nil, fmt.Errorf("insufficient data for message header")
 		}
 
@@ -572,14 +576,6 @@ func (reader *BinaryDataFileReader) ParseNext() (*DataFileMessage, error) {
 		}
 		return nil, nil
 	}
-
-	/*if reader.offset+dfmt.Len > len(reader.dataMap) {
-		if reader.verbose {
-			fmt.Printf("Insufficient data for message type %s (offset: %d, length: %d, data length: %d)\n",
-				dfmt.Name, reader.offset, dfmt.Len, len(reader.dataMap))
-		}
-		return reader.ParseNext()
-	}*/
 
 	body := reader.dataMap[reader.offset : reader.offset+dfmt.Len-3]
 	var elements []interface{}
@@ -702,46 +698,12 @@ func (reader *BinaryDataFileReader) ParseNext() (*DataFileMessage, error) {
 	reader.remaining = reader.dataLen - reader.offset
 	m := NewDFMessage(dfmt, elements, true, reader)
 
-	if m.Fmt.Name == "FMTU" {
-		// Add to units information
-		//FmtType := int(elements[0].(uint8))
-		//UnitIds := elements[1].([]byte)
-		//MultIds := elements[2].([]byte)
-		//if f, ok := reader.formats[byte(FmtType)]; ok {
-		//f.SetUnitIds(UnitIds)
-		//f.SetMultIds(MultIds)
-		//}
-	}
-
 	// Add the message to the parser
-	// You'll need to implement the _addMsg method based on your specific requirements
 	reader.addMsg(m)
 
 	reader.Percent = 100.0 * float64(reader.offset) / float64(reader.dataLen)
 
 	return m, nil
-}
-
-//func (reader *BinaryDataFileReader) Print_binaryFormats() {
-//	fmt.Println("Binary formats:")
-//	for _, format := range reader.binaryFormats {
-//		fmt.Println(format)
-//	}
-//}
-
-func addUnique(list []string, s string) []string {
-	// Create a map where the keys are the strings in the list
-	m := make(map[string]bool)
-	for _, item := range list {
-		m[item] = true
-	}
-
-	// If the string is not in the map, add it to the list
-	if !m[s] {
-		list = append(list, s)
-	}
-
-	return list
 }
 
 func bytesToInt16Slice(b []byte) []int16 {
@@ -755,18 +717,6 @@ func bytesToInt16Slice(b []byte) []int16 {
 	}
 
 	return result
-}
-
-func bytesToInt16Array(b []byte) []int16 {
-	if len(b)%2 != 0 {
-		return nil
-	}
-	arr := make([]int16, 0, len(b)/2)
-	for i := 0; i < len(b); i += 2 {
-		num := int16(binary.LittleEndian.Uint16(b[i : i+2]))
-		arr = append(arr, num)
-	}
-	return arr
 }
 
 func (reader *BinaryDataFileReader) FindUnusedFormat() int {
@@ -817,15 +767,6 @@ func (d *BinaryDataFileReader) addMsg(m *DataFileMessage) {
 			d.flightmode = "UNKNOWN"
 		}
 	}
-
-	//if msgType == "STAT" && contains(m.FieldNames, "MainState") {
-	//	d.flightmode = m.MainState // Placeholder for px4(m.MainState)
-	//	}
-}
-
-func modeMappingByNumber(mavType string) map[int]string {
-	// Implement this function 
-	return nil
 }
 
 func modeStringACM(modeNumber int) string {

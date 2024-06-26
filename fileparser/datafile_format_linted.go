@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+/*
+This code defines a structure and methods for handling data file formats, for 
+binary data files. It includes functionality for unpacking various data types, handling 
+different format characters, and managing metadata about the file format such as units and multipliers.
+*/
+
 const (
 	MetricMultiplier        = 0.01
 	defaultStringSize       = 64
@@ -15,11 +21,13 @@ const (
 	alternativeStringSize16 = 16
 )
 
+// Error variables for specific parsing situations
 var (
 	ErrSkipDigits = errors.New("skip digits")
 	ErrIgnoreChar = errors.New("ignore character")
 )
 
+// map format characters to their corresponding unpacking information
 var FormatToUnpackInfo = map[byte][3]interface{}{
 	'a': {"64s", nil, string("")},
 	'b': {"b", nil, int(0)},
@@ -43,6 +51,7 @@ var FormatToUnpackInfo = map[byte][3]interface{}{
 	'Z': {"64s", nil, string("")},
 }
 
+// returns the byte value of a character, or 0 if the character is null
 func u_ord(c byte) byte {
 	if c == 0 {
 		return 0
@@ -50,78 +59,89 @@ func u_ord(c byte) byte {
 	return c
 }
 
+// DataFileFormat represents the structure of a data file format
 type DataFileFormat struct {
-	Typ           int
-	Name          string
-	Len           int
-	Format        string
-	Columns       []string
-	InstanceField *string
-	UnitIds       *string
-	MultIds       *string
-	MsgStruct     string
-	MsgTypes      []interface{}
-	MsgMults      []interface{}
-	MsgFmts       []string
-	Colhash       map[string]int
-	AIndexes      []int
-	InstanceOfs   int
-	InstanceLen   int
+	Typ            int
+	Name           string
+	Len            int
+	Format         string
+	Columns        []string
+	InstanceField  *string
+	UnitIds        *string
+	MultIds        *string
+	MessageStruct  string
+	MessageTypes   []interface{}
+	MessageMults   []interface{}
+	MessageFormats []string
+	ColumnHash     map[string]int
+	AIndexes       []int
+	InstanceOffset int
+	InstanceLength int
 }
 
-func NewDataFileFormat(typ int, name string, flen int, format string, columns []string, oldfmt *DataFileFormat) (*DataFileFormat, error) {
+// creates a new DataFileFormat instance
+func NewDataFileFormat(typ int, name string, fileLength int, format string, columns []string, oldformat *DataFileFormat) (*DataFileFormat, error) {
 	df := &DataFileFormat{
 		Typ:     typ,
 		Name:    nullTerm(name),
-		Len:     flen,
+		Len:     fileLength,
 		Format:  format,
 		Columns: columns,
 	}
 
-	msgStruct := "<"
-	msgMults := []interface{}{}
-	msgTypes := []interface{}{}
-	msgFmts := []string{}
+	messageStruct := "<"
+	messageMults := []interface{}{}
+	messageTypes := []interface{}{}
+	messageFormats := []string{}
 
 	for _, c := range format {
+		// this code is essentially building up several data structures (messageFormats, messageStruct, 
+		// messageMults, and messageTypes) based on the input format string. Each of these structures holds 
+		// different aspects of how to interpret and unpack the data:
+
+		// messageFormats holds the raw format characters.
+		// messageStruct builds a string representation of the structure (used for binary unpacking).
+		// messageMults holds multipliers for each field (if any).
+		// messageTypes holds type information for each field.
 		if u_ord(byte(c)) == 0 {
 			break
 		}
-		msgFmts = append(msgFmts, string(c))
+		messageFormats = append(messageFormats, string(c))
 		if val, ok := FormatToUnpackInfo[byte(c)]; ok {
 			strVal, _ := val[0].(string)
-			msgStruct += strVal
-			msgMults = append(msgMults, val[1])
+			messageStruct += strVal
+			messageMults = append(messageMults, val[1])
+			
 			if c == 'a' {
-				msgTypes = append(msgTypes, binary.BigEndian)
+				// Endianness refers to the order in which bytes are arranged into larger numerical values 
+				// when stored in memory or transmitted over a network. Big-endian (BE): The most significant 
+				// byte is stored first (at the lowest memory address). It's often used with functions in the 
+				// binary package, like binary.Read() or binary.Write(), to ensure data is interpreted correctly.
+				messageTypes = append(messageTypes, binary.BigEndian)
 			} else {
-				msgTypes = append(msgTypes, val[2])
+				messageTypes = append(messageTypes, val[2])
 			}
 		} else {
 			return nil, fmt.Errorf("DFFormat: Unsupported format char: '%c' in message %s", c, name)
 		}
 	}
-	df.MsgStruct = msgStruct
-	df.MsgTypes = msgTypes
-	df.MsgMults = msgMults
-	df.MsgFmts = msgFmts
 
-	df.Colhash = make(map[string]int)
+	df.MessageStruct = messageStruct
+	df.MessageTypes = messageTypes
+	df.MessageMults = messageMults
+	df.MessageFormats = messageFormats
+
+	df.ColumnHash = make(map[string]int)
 	for i, column := range columns {
-		df.Colhash[column] = i
+		df.ColumnHash[column] = i
 	}
 
 	df.AIndexes = []int{}
-	for i, msgFmt := range df.MsgFmts {
+	for i, msgFmt := range df.MessageFormats {
 		if msgFmt == "a" {
 			df.AIndexes = append(df.AIndexes, i)
 		}
 	}
-
-	// if oldfmt != nil {
-	//	df.SetUnitIds(oldfmt.UnitIds)
-	//	df.SetMultIds(oldfmt.MultIds)
-	// }
 
 	return df, nil
 }
@@ -135,11 +155,13 @@ func (df *DataFileFormat) getUnpacker() func([]byte) ([]interface{}, error) {
 
 		elements := make([]interface{}, 0)
 		reader := bytes.NewReader(data)
+		df.MessageStruct = "<" + df.Format
 
-		for i := 1; i < len(df.MsgStruct); i++ {
-			elem, err := unpackElement(reader, df.MsgStruct, &i)
+		for i := 1; i < len(df.MessageStruct); i++ {
+			//elements, err := reader.unpackers[msgType](body)
+			elem, err := unpackElement(reader, df.MessageStruct, &i)
 			if err != nil {
-				return nil, err
+				continue
 			}
 			if elem != nil {
 				elements = append(elements, elem)
@@ -150,7 +172,7 @@ func (df *DataFileFormat) getUnpacker() func([]byte) ([]interface{}, error) {
 	}
 }
 
-// unpackElement handles unpacking a single element based on the format character.
+// handles unpacking a single element based on the format character.
 func unpackElement(reader *bytes.Reader, format string, i *int) (interface{}, error) {
 	switch format[*i] {
 	case 'a', 'Z':
@@ -163,7 +185,7 @@ func unpackElement(reader *bytes.Reader, format string, i *int) (interface{}, er
 		return unpackMetricElement(reader, format[*i])
 	case 'd', 'f':
 		return unpackFloatElement(reader, format[*i])
-	case 'h', 'H', 'i', 'I', 'q', 'Q':
+	case 'h', 'H', 'i', 'I', 'L', 'q', 'Q':
 		return unpackIntElement(reader, format[*i])
 	case 'n':
 		return readFixedSizeString(reader, alternativeStringSize4)
@@ -180,31 +202,35 @@ func unpackElement(reader *bytes.Reader, format string, i *int) (interface{}, er
 	}
 }
 
-// unpackMetricElement handles unpacking elements that need to be multiplied by a metric multiplier.
+// handles unpacking elements that need to be multiplied by a metric multiplier.
 func unpackMetricElement(reader *bytes.Reader, formatChar byte) (interface{}, error) {
 	var err error
 	var val interface{}
 
 	switch formatChar {
 	case 'c':
-		val, err = readInt16(reader)
+		var temp int16
+		err = binary.Read(reader, binary.LittleEndian, &temp)
 		if err == nil {
-			val = float64(val.(int16)) * MetricMultiplier
+			val = float64(temp) * MetricMultiplier
 		}
 	case 'C':
-		val, err = readUint16(reader)
+		var temp int
+		temp, err = readUint16(reader)
 		if err == nil {
-			val = float64(val.(uint16)) * MetricMultiplier
+			val = float64(temp) * MetricMultiplier
 		}
 	case 'e':
-		val, err = readInt32(reader)
+		var temp int
+		temp, err = readInt32(reader)
 		if err == nil {
-			val = float64(val.(int32)) * MetricMultiplier
+			val = float64(temp) * MetricMultiplier
 		}
 	case 'E':
-		val, err = readUint32(reader)
+		var temp int
+		temp, err = readUint32(reader)
 		if err == nil {
-			val = float64(val.(uint32)) * MetricMultiplier
+			val = float64(temp) * MetricMultiplier
 		}
 	default:
 		return nil, fmt.Errorf("unsupported metric format character: %c", formatChar)
@@ -217,7 +243,7 @@ func unpackMetricElement(reader *bytes.Reader, formatChar byte) (interface{}, er
 	return val, nil
 }
 
-// unpackFloatElement handles unpacking float elements.
+// handles unpacking float elements.
 func unpackFloatElement(reader *bytes.Reader, formatChar byte) (interface{}, error) {
 	switch formatChar {
 	case 'd':
@@ -229,7 +255,7 @@ func unpackFloatElement(reader *bytes.Reader, formatChar byte) (interface{}, err
 	}
 }
 
-// unpackIntElement handles unpacking integer elements.
+// handles unpacking integer elements.
 func unpackIntElement(reader *bytes.Reader, formatChar byte) (interface{}, error) {
 	switch formatChar {
 	case 'h':
@@ -247,14 +273,14 @@ func unpackIntElement(reader *bytes.Reader, formatChar byte) (interface{}, error
 	}
 }
 
-// handleStringCase handles parsing string sizes and reading fixed-size strings.
+// handles parsing string sizes and reading fixed-size strings.
 func handleStringCase(reader *bytes.Reader, format string, i *int) (string, error) {
 	strSize := parseMsgStructStrSize(format, i)
 
 	return readFixedSizeString(reader, strSize)
 }
 
-// parseMsgStructStringSize parses the size of the string in the message structure.
+// parses the size of the string in the message structure.
 func parseMsgStructStrSize(format string, i *int) int {
 	size := int(format[*i] - '0')
 
@@ -265,23 +291,6 @@ func parseMsgStructStrSize(format string, i *int) int {
 
 	return size
 }
-
-/*
-func parseMsgStructStringSize(msgStruct string, i *int) (int, error) {
-	if *i+1 >= len(msgStruct) {
-		return 0, fmt.Errorf("index out of bounds in msgStruct string")
-	}
-
-	var strSize int
-	switch msgStruct[*i+1] {
-	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-		strSize = int(msgStruct[*i+1] - '0')
-		*i++
-	default:
-		strSize = 64 // Default size if not specified
-	}
-	return strSize, nil
-} */
 
 // Helper functions to read specific types from the reader.
 func readFixedSizeString(reader *bytes.Reader, size int) (string, error) {
@@ -346,34 +355,37 @@ func readFloat64(reader *bytes.Reader) (float64, error) {
 	return val, err
 }
 
-func (df *DataFileFormat) SetUnitIds(unit_ids *string) {
-	if unit_ids == nil {
+// This function is crucial for handling data formats that include an instance field. 
+// It sets up the necessary information to correctly parse and interpret instance-specific 
+// data within the larger data structure. The instance field is likely used to distinguish 
+// between multiple instances of the same type of data within a single record or message.
+func (dataFormat *DataFileFormat) SetUnitIds(unitIdentifiers *string) {
+	if unitIdentifiers == nil {
 		return
 	}
 
-	df.UnitIds = unit_ids
-	instance_idx := strings.Index(*unit_ids, "#")
-	if instance_idx != -1 {
-		df.InstanceField = &df.Columns[instance_idx]
-		pre_fmt := df.Format[:instance_idx]
-		pre_sfmt := ""
-		for _, c := range pre_fmt {
+	dataFormat.UnitIds = unitIdentifiers
+	instanceIndex := strings.Index(*unitIdentifiers, "#")
+	
+	if instanceIndex != -1 {
+		dataFormat.InstanceField = &dataFormat.Columns[instanceIndex]
+		prefixFormat := dataFormat.Format[:instanceIndex]
+		prefixStringFormat := ""
+		
+		for _, c := range prefixFormat {
 			if info, ok := FormatToUnpackInfo[byte(c)]; ok {
-				if sfmt, ok := info[0].(string); ok {
-					pre_sfmt += sfmt
+				if stringFormat, ok := info[0].(string); ok {
+					prefixStringFormat += stringFormat
 				}
 			}
 		}
-		df.InstanceOfs = binary.Size(pre_sfmt)
-		ifmt := df.Format[instance_idx]
-		df.InstanceLen = binary.Size(ifmt)
+
+		dataFormat.InstanceOffset = binary.Size(prefixStringFormat)
+		instance_format := dataFormat.Format[instanceIndex]
+		dataFormat.InstanceLength = binary.Size(instance_format)
 	}
 }
 
 func (df *DataFileFormat) SetMultIds(mult_ids *string) {
 	df.MultIds = mult_ids
-}
-
-func (df *DataFileFormat) String() string {
-	return fmt.Sprintf("DFFormat(%d,%s,%s,%s)", df.Typ, df.Name, df.Format, df.Columns)
 }

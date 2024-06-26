@@ -44,13 +44,13 @@ func (clock *GPSInterpolated) RewindEvent() {
 }
 
 func (clock *GPSInterpolated) FindTimeBase(message *DataFileMessage, firstUsStamp int) {
-	weekInterface, _ := message.GetAttr("Week")
+	weekInterface, _ := message.GetAttribute("Week")
 	week, ok := weekInterface.(int)
 	if !ok {
 		return
 	}
 
-	timeMSInterface, _ := message.GetAttr("TimeMS")
+	timeMSInterface, _ := message.GetAttribute("TimeMS")
 	timeMs, ok := timeMSInterface.(int)
 	if !ok {
 		return
@@ -94,27 +94,27 @@ func (clock *GPSInterpolated) GPSMessageArrived(message *DataFileMessage) {
 	var gpsWeek, gpsTimems interface{}
 
 	// First attempt: msec-style GPS message
-	gpsWeek, _ = message.GetAttr("Week")
-	gpsTimems, _ = message.GetAttr("TimeMS")
+	gpsWeek, _ = message.GetAttribute("Week")
+	gpsTimems, _ = message.GetAttribute("TimeMS")
 
 	// Second attempt: usec-style GPS message
 	if gpsWeek == nil {
-		gpsWeek, _ = message.GetAttr("GWk")
-		gpsTimems, _ = message.GetAttr("GMS")
+		gpsWeek, _ = message.GetAttribute("GWk")
+		gpsTimems, _ = message.GetAttribute("GMS")
 	}
 
 	// Third attempt: PX4-style timestamp
 	if gpsWeek == nil {
-		gpsTimeInterface, _ := message.GetAttr("GPSTime")
+		gpsTimeInterface, _ := message.GetAttribute("GPSTime")
 		if gpsTimeInterface != nil {
 			// PX4-style timestamp
 			return
 		}
 
 		// Fourth attempt: AvA-style logs
-		gpsWeek, _ = message.GetAttr("Wk")
+		gpsWeek, _ = message.GetAttribute("Wk")
 		if gpsWeek != nil {
-			gpsTimems, _ = message.GetAttr("TWk")
+			gpsTimems, _ = message.GetAttribute("TWk")
 		}
 	}
 
@@ -154,7 +154,7 @@ func (clock *GPSInterpolated) SetMessageTimestamp(message *DataFileMessage) {
 		rate = 50
 	}
 	count := clock.CountsSinceGPS[message.GetType()]
-	err := message.SetAttr("_timestamp", clock.Timebase+float64(count)/rate)
+	err := message.SetAttribute("_timestamp", clock.Timebase+float64(count)/rate)
 	if err != nil {
 		// intentionally ignoring error
 		log.Printf("Failed to set attribute _timestamp: %v", err)

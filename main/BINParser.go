@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"time"
 
-	//"github.com/edancain/telemetry_parser/src"
 	"github.com/edancain/telemetry_parser/fileparser"
 
 	"github.com/peterstace/simplefeatures/geom"
@@ -98,7 +97,7 @@ func (p *BINParser)extractData(file io.Reader) error {
 
 	var zeroTimeBase = false
 
-	dfreader, err := fileparser.NewBinaryDataFileReader(file, dataLen, zeroTimeBase, nil )
+	dfreader, err := fileparser.NewBinaryDataFileReader(file, dataLen, zeroTimeBase )
 	if err != nil {
 		return fmt.Errorf("failed to create binary data file reader: %v", err)
 	}
@@ -241,7 +240,6 @@ func main() {
 	fmt.Println("GPS Time:", gpsTime)
 
 	// Use the extracted data
-	//fmt.Println(data)
 	polyline, err := createPolylineFromData(parser.data)
 	if err != nil {
 		fmt.Println("Error creating polyline:", err)

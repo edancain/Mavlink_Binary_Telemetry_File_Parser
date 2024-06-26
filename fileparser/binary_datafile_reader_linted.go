@@ -1,7 +1,6 @@
 package fileparser
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -18,8 +17,8 @@ const (
 	FmtTypeDefault        = 128
 	MaxMessageCount       = 256
 	EndOfFileGarbageLimit = 528
-	FmtName               = "FMT"
-	FmtLength             = 89
+	FormatName            = "FMT"
+	FormatLength          = 89
 	FmtFormat             = "BBnNZ"
 	PercentMultiplier     = 100.0
 	headerSizeAdjustment  = 3
@@ -155,8 +154,6 @@ type BinaryDataFileReader struct {
 	timestamp     int
 	counts        []int
 	_count        int
-	nameToID      map[string]int
-	idToName      map[int]string
 	MavType       MavType
 	params        map[string]interface{}
 	flightmodes   []interface{}
@@ -168,13 +165,16 @@ type BinaryDataFileReader struct {
 	binaryFormats []string
 }
 
+// NewBinaryDataFileReader creates a new reader for binary data files
 func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool) (*BinaryDataFileReader, error) {
+	// Defining columns for the data file format
 	var columns = []string{"Type", "Length", "Name", "Format", "Columns"}
-	df, err := NewDataFileFormat(FmtTypeDefault, FmtName, FmtLength, FmtFormat, columns, nil)
+	df, err := NewDataFileFormat(FmtTypeDefault, FormatName, FormatLength, FmtFormat, columns, nil)
 	if err != nil {
 		return nil, err
 	}
 
+	// Initialize the BinaryDataFileReader with default values
 	reader := &BinaryDataFileReader{
 		HEAD1:        HEAD1Const,
 		HEAD2:        HEAD2Const,
@@ -193,10 +193,20 @@ func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool) (*B
 		clock:        nil,
 		formats:      make(map[int]*DataFileFormat),
 	}
+
+	/* Add the initial format to the reader's formats map
+	 	NB: Bootstrapping the format parsing:
+		The initial format added here is typically the "FMT" (Format) message format. This is crucial
+		because the "FMT" messages themselves define the structure of all other message types in the binary data file.
+		Self-describing data: Many binary telemetry or log formats are self-describing, meaning they contain metadata
+		about their own structure. The "FMT" message is the key to understanding this structure.
+	*/
 	reader.formats[df.Typ] = df
 	reader.binaryFormats = []string{}
 
+	// Handle file input: either as a file or a byte slice
 	if filehandle, ok := file.(*os.File); ok {
+		// If it's a file, memory map it for efficient reading
 		reader.fileHandle = filehandle
 
 		fileInfo, err := reader.fileHandle.Stat()
@@ -205,16 +215,13 @@ func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool) (*B
 		}
 
 		reader.dataLen = int(fileInfo.Size())
-
 		reader.unpackers = make(map[int]func([]byte) ([]interface{}, error))
-
 		reader.dataMap, err = mmap.MapRegion(reader.fileHandle, reader.dataLen, mmap.RDONLY, 0, 0)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		reader.dataLen = dataLen
-
 		reader.dataMap = make([]byte, dataLen)
 		_, err := io.ReadFull(file, reader.dataMap)
 		if err != nil {
@@ -222,24 +229,25 @@ func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool) (*B
 		}
 	}
 
+	// Initialize the reader (BinaryDataFileReader)
+	reader.init()
 	return reader, nil
 }
 
 func (reader *BinaryDataFileReader) init() {
-	// Implementation of init function
 	reader.offset = 0
 	reader.remaining = reader.dataLen
 	reader.prevType = 0
 	reader.initClock()
-	reader._rewind()
+	reader.rewind()
 	reader.initArrays()
 }
 
+// initClock initializes the clock for timestamp handling, this is crucial for GPS data handling
 func (reader *BinaryDataFileReader) initClock() {
-	reader._rewind()
+	reader.rewind()
 	reader.InitClockGPSInterpolated()
 
-	var firstUsStamp int
 	var firstMsStamp int
 	count := 0
 
@@ -251,9 +259,7 @@ func (reader *BinaryDataFileReader) initClock() {
 		}
 
 		msgType := message.GetType()
-
-		firstUsStamp = reader.checkFirstUsStamp(firstUsStamp, &message)
-		firstMsStamp = reader.checkFirstMsStamp(firstMsStamp, msgType, &message)
+		firstMsStamp = reader.getFirstMsStamp(firstMsStamp, msgType, &message)
 
 		if msgType == MsgTypeGPS || msgType == MsgTypeGPS2 {
 			if reader.processGPSTime(&message, firstMsStamp) {
@@ -262,24 +268,16 @@ func (reader *BinaryDataFileReader) initClock() {
 		}
 	}
 
-	reader._rewind()
+	reader.rewind()
 }
 
-func (reader *BinaryDataFileReader) checkFirstUsStamp(firstUsStamp int, message *DataFileMessage) int {
-	if firstUsStamp == 0 {
-		usTimeStampInterface, _ := message.GetAttr("TimeUS")
-		usTimeStamp, ok := usTimeStampInterface.(int)
-		if ok && usTimeStamp != 0 {
-			firstUsStamp = usTimeStamp
-		}
-	}
-	return firstUsStamp
-}
-
-func (reader *BinaryDataFileReader) checkFirstMsStamp(firstMsStamp int, msgType string, message *DataFileMessage) int {
+// finds the first valid millisecond timestamp in the data
+func (reader *BinaryDataFileReader) getFirstMsStamp(firstMsStamp int, msgType string, message *DataFileMessage) int {
+	// Only process if we haven't found a valid timestamp yet and the message is not a GPS message
 	if firstMsStamp == 0 && msgType != MsgTypeGPS && msgType != MsgTypeGPS2 {
-		msTimeStampInterface, _ := message.GetAttr("TimeMS")
+		msTimeStampInterface, _ := message.GetAttribute("TimeMS")
 		msTimeStamp, ok := msTimeStampInterface.(int)
+		// If conversion is successful and the timestamp is not zero, use this as the first timestamp
 		if ok && msTimeStamp != 0 {
 			firstMsStamp = msTimeStamp
 		}
@@ -287,41 +285,44 @@ func (reader *BinaryDataFileReader) checkFirstMsStamp(firstMsStamp int, msgType 
 	return firstMsStamp
 }
 
+// extract and processes GPS time information from a message
 func (reader *BinaryDataFileReader) processGPSTime(message *DataFileMessage, firstMsStamp int) bool {
-	var timeUS, gwk, t, week int
+	var timeUS, gps_week, t, week int
 	var err error
 
-	timeUS, err = processAttr(message, "TimeUS")
+	// Extract TimeUS (microsecond timestamp) from the message
+	timeUS, err = processAttribute(message, "TimeUS")
 	if err != nil {
 		log.Println("Error processing TimeUS:", err)
-		return false
 	}
 
-	gwk, err = processAttr(message, "GWk")
+	gps_week, err = processAttribute(message, "GWk")
 	if err != nil {
 		log.Println("Error processing GWk:", err)
-		return false
 	}
 
-	if timeUS != 0 && gwk != 0 {
+	// If both TimeUS and gps_week are valid, use them to find the time base
+	if timeUS != 0 && gps_week != 0 {
 		if !reader.zeroTimeBase {
 			reader.clock.FindTimeBase(message, firstMsStamp)
 		}
 		return true
 	}
 
-	t, err = processAttr(message, "T")
+	// If TimeUS and GWk are not available, try to use T (millisecond timestamp) and Week
+	t, err = processAttribute(message, "T")
 	if err != nil {
 		log.Println("Error processing T:", err)
 		return false
 	}
 
-	week, err = processAttr(message, "Week")
+	week, err = processAttribute(message, "Week")
 	if err != nil {
 		log.Println("Error processing Week:", err)
 		return false
 	}
 
+	// If both T and Week are valid, use them to find the time base
 	if t != 0 && week != 0 {
 		if firstMsStamp == 0 {
 			firstMsStamp = t
@@ -336,12 +337,15 @@ func (reader *BinaryDataFileReader) processGPSTime(message *DataFileMessage, fir
 	return false
 }
 
-func processAttr(message *DataFileMessage, attr string) (int, error) {
-	attrInterface, err := message.GetAttr(attr)
+// extracts an attribute from a message and processes it
+func processAttribute(message *DataFileMessage, attributeName string) (int, error) {
+	// Get the attribute from the DataFileMessage
+	attrInterface, err := message.GetAttribute(attributeName)
 	if err != nil {
 		return 0, err
 	}
 
+	// Process the attribute as a time value
 	value, err := processTime(attrInterface)
 	if err != nil {
 		return 0, err
@@ -350,6 +354,7 @@ func processAttr(message *DataFileMessage, attr string) (int, error) {
 	return value, nil
 }
 
+// converts a time interface to an integer
 func processTime(timeInterface interface{}) (int, error) {
 	time, ok := timeInterface.(int)
 	if !ok {
@@ -363,7 +368,8 @@ func (reader *BinaryDataFileReader) InitClockGPSInterpolated() {
 	reader.clock = clock
 }
 
-func (reader *BinaryDataFileReader) _rewind() {
+// rewind resets the reader to the beginning of the data
+func (reader *BinaryDataFileReader) rewind() {
 	reader.offset = 0
 	reader.remaining = reader.dataLen
 	reader.typeNums = nil
@@ -385,10 +391,7 @@ func (reader *BinaryDataFileReader) _rewind() {
 	}
 }
 
-func (reader *BinaryDataFileReader) Rewind() {
-	reader._rewind()
-}
-
+// initializes the arrays and processes the messages
 func (reader *BinaryDataFileReader) initArrays() {
 	reader.initializeArrays()
 	reader.processMessages()
@@ -396,14 +399,11 @@ func (reader *BinaryDataFileReader) initArrays() {
 	reader.resetOffset()
 }
 
+// set up the initial arrays for offsets and counts
 func (reader *BinaryDataFileReader) initializeArrays() {
 	reader.offsets = make([][]int, MaxMessageCount)
 	reader.counts = make([]int, MaxMessageCount)
 	reader._count = 0
-	reader.nameToID = make(map[string]int)
-	reader.idToName = make(map[int]string)
-	reader.formats = make(map[int]*DataFileFormat)
-	reader.unpackers = make(map[int]func([]byte) ([]interface{}, error))
 
 	for i := 0; i < MaxMessageCount; i++ {
 		reader.offsets[i] = []int{}
@@ -411,6 +411,7 @@ func (reader *BinaryDataFileReader) initializeArrays() {
 	}
 }
 
+// read through the data and process each message
 func (reader *BinaryDataFileReader) processMessages() {
 	typeInstances := make(map[int]map[string]struct{})
 	lengths := make([]int, MaxMessageCount)
@@ -418,88 +419,98 @@ func (reader *BinaryDataFileReader) processMessages() {
 		lengths[i] = -1
 	}
 
-	ofs := 0
+	offset := 0
 	HEAD1 := int(reader.HEAD1)
 	HEAD2 := int(reader.HEAD2)
 
-	for ofs+headerSizeAdjustment < reader.dataLen {
-		hdr := reader.dataMap[ofs : ofs+headerSizeAdjustment]
+	for offset+headerSizeAdjustment < reader.dataLen {
+		// Check for valid message header
+		hdr := reader.dataMap[offset : offset+headerSizeAdjustment]
 		if int(hdr[0]) != HEAD1 || int(hdr[1]) != HEAD2 {
-			reader.handleBadHeader(ofs, hdr)
-			ofs++
+			reader.handleBadHeader(offset, hdr)
+			offset++
 			continue
 		}
 
 		mtype := int(hdr[2])
-		reader.offsets[mtype] = append(reader.offsets[mtype], ofs)
+		reader.offsets[mtype] = append(reader.offsets[mtype], offset)
 
+		// Process first occurrence of a message type
 		if lengths[mtype] == -1 {
-			reader.processFirstMessageType(ofs, mtype, lengths)
+			reader.processFirstMessageType(offset, mtype, lengths)
 		} else {
-			reader.processInstanceField(ofs, mtype, typeInstances)
+			// Process instance fields for known message types
+			reader.processInstanceField(offset, mtype, typeInstances)
 		}
 
 		reader.counts[mtype]++
 		mlen := lengths[mtype]
 
+		// Process format messages
 		if mtype == int(FmtTypeDefault) {
-			reader.processDefaultFormat(mtype, ofs, mlen)
+			reader.processDefaultFormat(mtype, offset, mlen)
 		}
 
+		// Process format unit messages
 		if reader.needFmtuType(mtype) {
-			reader.processFmtuType(mtype, ofs, mlen)
+			reader.processFmtuType(mtype, offset, mlen)
 		}
 
-		ofs += mlen
+		offset += mlen
 	}
 }
 
-func (reader *BinaryDataFileReader) handleBadHeader(ofs int, hdr []byte) {
-	if reader.dataLen-ofs >= EndOfFileGarbageLimit || reader.dataLen < EndOfFileGarbageLimit {
-		fmt.Fprintf(os.Stderr, "bad header 0x%02x 0x%02x at %d\n", hdr[0], hdr[1], ofs)
+// log errors for invalid message headers
+func (reader *BinaryDataFileReader) handleBadHeader(offset int, header []byte) {
+	// Log error if not near end of file
+	if int(reader.dataLen)-offset >= EndOfFileGarbageLimit || reader.dataLen < EndOfFileGarbageLimit {
+		fmt.Fprintf(os.Stderr, "bad header 0x%02x 0x%02x at %d\n", header[0], header[1], offset)
 	}
 }
 
-func (reader *BinaryDataFileReader) processFirstMessageType(ofs int, mtype int, lengths []int) {
-	if _, ok := reader.formats[mtype]; !ok {
-		reader.handleUnknownMessageType(ofs, mtype)
+func (reader *BinaryDataFileReader) processFirstMessageType(offset int, messageType int, lengths []int) {
+	if _, ok := reader.formats[messageType]; !ok {
+		reader.handleUnknownMessageType(offset, messageType)
 		return
 	}
 
-	reader.offset = ofs
+	reader.offset = offset
 	if _, err := reader.ParseNext(); err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing next: %v\n", err)
 		return
 	}
 
-	unpacker := reader.formats[mtype].getUnpacker()
+	unpacker := reader.formats[messageType].getUnpacker()
 	if unpacker == nil {
 		return
 	}
 
-	reader.unpackers[mtype] = unpacker
-	lengths[mtype] = reader.formats[mtype].Len
+	reader.unpackers[messageType] = unpacker
+	lengths[messageType] = reader.formats[messageType].Len
 }
 
-func (reader *BinaryDataFileReader) handleUnknownMessageType(ofs int, mtype int) {
-	if reader.dataLen-ofs >= EndOfFileGarbageLimit || reader.dataLen < EndOfFileGarbageLimit {
-		fmt.Fprintf(os.Stderr, "unknown msg type 0x%02x (%d) at %d\n", mtype, mtype, ofs)
+func (reader *BinaryDataFileReader) handleUnknownMessageType(offset int, messageType int) {
+	if int(reader.dataLen)-offset >= EndOfFileGarbageLimit || reader.dataLen < EndOfFileGarbageLimit {
+		fmt.Fprintf(os.Stderr, "unknown msg type 0x%02x (%d) at %d\n", messageType, messageType, offset)
 	}
 }
 
-func (reader *BinaryDataFileReader) processInstanceField(ofs int, mtype int, typeInstances map[int]map[string]struct{}) {
-	dfmt := reader.formats[mtype]
-	if dfmt.InstanceField != nil {
-		idata := reader.dataMap[ofs+headerSizeAdjustment+dfmt.InstanceOfs : ofs+headerSizeAdjustment+dfmt.InstanceOfs+dfmt.InstanceLen]
+func (reader *BinaryDataFileReader) processInstanceField(offset int, messageType int, typeInstances map[int]map[string]struct{}) {
+	dataFileFormat := reader.formats[messageType]
+	if dataFileFormat.InstanceField != nil {
+		// Extract instance data
+		idata := reader.dataMap[offset+headerSizeAdjustment+dataFileFormat.InstanceOffset : offset+headerSizeAdjustment+dataFileFormat.InstanceOffset+dataFileFormat.InstanceLength]
 
-		if _, ok := typeInstances[mtype]; !ok {
-			typeInstances[mtype] = make(map[string]struct{})
+		// Initialize map for this message type if not exists
+		if _, ok := typeInstances[messageType]; !ok {
+			typeInstances[messageType] = make(map[string]struct{})
 		}
 
+		// Process new instance
 		idataStr := string(idata)
-		if _, ok := typeInstances[mtype][idataStr]; !ok {
-			typeInstances[mtype][idataStr] = struct{}{}
-			reader.offset = ofs
+		if _, ok := typeInstances[messageType][idataStr]; !ok {
+			typeInstances[messageType][idataStr] = struct{}{}
+			reader.offset = offset
 			if _, err := reader.ParseNext(); err != nil {
 				fmt.Fprintf(os.Stderr, "error parsing next: %v\n", err)
 				return
@@ -508,23 +519,26 @@ func (reader *BinaryDataFileReader) processInstanceField(ofs int, mtype int, typ
 	}
 }
 
+// sum up all message counts
 func (reader *BinaryDataFileReader) aggregateCounts() {
 	for _, count := range reader.counts {
 		reader._count += count
 	}
 }
 
+// set the offset back to the beginning
 func (reader *BinaryDataFileReader) resetOffset() {
 	reader.offset = 0
 }
 
-func (reader *BinaryDataFileReader) processDefaultFormat(mtype, ofs, mlen int) {
-	body := reader.dataMap[ofs+headerSizeAdjustment : ofs+mlen]
-	if len(body)+headerSizeAdjustment < mlen {
+// handles the processing of format messages
+func (reader *BinaryDataFileReader) processDefaultFormat(messageType, offset, messageLength int) {
+	body := reader.dataMap[offset+headerSizeAdjustment : offset+messageLength]
+	if len(body)+headerSizeAdjustment < messageLength {
 		return
 	}
 
-	unpacker := reader.unpackers[mtype]
+	unpacker := reader.unpackers[messageType]
 	if unpacker == nil {
 		return
 	}
@@ -534,112 +548,84 @@ func (reader *BinaryDataFileReader) processDefaultFormat(mtype, ofs, mlen int) {
 		return
 	}
 
-	ftype, _ := elements[0].(int)
-	name := nullTerm(string(elements[2].([]byte)))
-	length, _ := elements[1].(int)
-	format := nullTerm(string(elements[3].([]byte)))
-
-	bytesSlice, ok := elements[4].([]uint8)
-	if !ok {
-		log.Println("Invalid data type")
-		return
-	}
-
-	var stringArray []string
-	var str string
-	for _, b := range bytesSlice {
-		if b == 0 {
-			if str != "" {
-				stringArray = append(stringArray, str)
-			}
-			str = ""
-			continue
-		}
-		str += string(b)
-	}
-
-	var columns []string
-	if len(stringArray) > 0 {
-		columns = strings.Split(stringArray[0], ",")
-	}
-
-	mfmt, err := NewDataFileFormat(ftype, name, length, format, columns, reader.formats[ftype])
-	if err != nil {
-		return
-	}
-
-	reader.formats[ftype] = mfmt
-	reader.nameToID[mfmt.Name] = mfmt.Typ
-	reader.idToName[mfmt.Typ] = mfmt.Name
+	reader.processFmtMessage(elements)
 }
 
-func (reader *BinaryDataFileReader) needFmtuType(mtype int) bool {
-	return reader.formats[mtype].Name == "FMTU"
+func (reader *BinaryDataFileReader) needFmtuType(messageType int) bool {
+	return reader.formats[messageType].Name == "FMTU"
 }
 
-func (reader *BinaryDataFileReader) processFmtuType(mtype, ofs, mlen int) {
-	dfmt := reader.formats[mtype]
-	body := reader.dataMap[ofs+headerSizeAdjustment : ofs+mlen]
-	if len(body)+headerSizeAdjustment < mlen {
+// process FMTU (Format Unit) messages
+func (reader *BinaryDataFileReader) processFmtuType(messageType, offset, messageLength int) {
+	dataFormat := reader.formats[messageType]
+	body := reader.dataMap[offset+headerSizeAdjustment : offset+messageLength]
+	if len(body)+headerSizeAdjustment < messageLength {
 		return
 	}
 
-	unpacker := reader.unpackers[mtype]
+	// Get the unpacker function for this message type
+	unpacker := reader.unpackers[messageType]
 	if unpacker == nil {
 		return
 	}
 
+	// Unpack the message elements
 	elements, err := unpacker(body)
 	if err != nil {
 		return
 	}
 
-	ftype, _ := elements[1].(int)
-	if fmt2, ok := reader.formats[ftype]; ok {
-		if _, colExists := dfmt.Colhash["UnitIds"]; colExists {
-			unitIds := nullTerm(string(elements[dfmt.Colhash["UnitIds"]].([]byte)))
+	// Extract the format type from the elements
+	// Not all message formats may include unit or multiplier information.
+	// By checking for existence first, the code can handle different types of format definitions flexibly.
+	// Unit IDs and Multiplier IDs might be optional metadata for some data types.
+	// Only setting them when they exist allows the system to work with both detailed and simple data formats.
+
+	formatType, _ := elements[1].(int)
+	if fmt2, ok := reader.formats[formatType]; ok {
+		// If UnitIds exist in the column hash, set them for the format
+		if _, columnExists := dataFormat.ColumnHash["UnitIds"]; columnExists {
+			unitIds := nullTerm(string(elements[dataFormat.ColumnHash["UnitIds"]].([]byte)))
 			fmt2.SetUnitIds(&unitIds)
 		}
-		if _, colExists := dfmt.Colhash["MultIds"]; colExists {
-			multIds := nullTerm(string(elements[dfmt.Colhash["MultIds"]].([]byte)))
+
+		if _, columnExists := dataFormat.ColumnHash["MultIds"]; columnExists {
+			multIds := nullTerm(string(elements[dataFormat.ColumnHash["MultIds"]].([]byte)))
 			fmt2.SetMultIds(&multIds)
 		}
 	}
 }
 
+// During clock initialization, the reader needs to process messages sequentially until it finds
+// the necessary time information.
+// This function allows the initialization code to easily retrieve messages one by one without
+// directly dealing with ParseNext()
 func (reader *BinaryDataFileReader) recvMsg() (DataFileMessage, error) {
-	msg, err := reader.ParseNext()
+	message, err := reader.ParseNext()
 	if err != nil {
 		return DataFileMessage{}, err
 	}
-	return *msg, nil
+	return *message, nil
 }
 
 func (reader *BinaryDataFileReader) ParseNext() (*DataFileMessage, error) {
-	var skipType []byte
-	var msgType int
+	var messageType int
 
+	// Loop until a valid message header is found
 	for {
 		if reader.dataLen-reader.offset < headerSizeAdjustment {
 			return nil, fmt.Errorf("insufficient data for message header")
 		}
 
-		hdr := reader.dataMap[reader.offset : reader.offset+headerSizeAdjustment]
-		if hdr[0] == reader.HEAD1 && hdr[1] == reader.HEAD2 {
-			if skipType != nil {
-				skipType = nil
-			}
+		header := reader.dataMap[reader.offset : reader.offset+headerSizeAdjustment]
+		if header[0] == reader.HEAD1 && header[1] == reader.HEAD2 {
+			messageType = int(header[2])
 
-			msgType = int(hdr[2])
-
-			if _, ok := reader.formats[msgType]; ok {
-				reader.prevType = msgType
+			// Check if the message type is known
+			if _, ok := reader.formats[messageType]; ok {
+				reader.prevType = messageType
 				break
 			}
-		}
-
-		if skipType == nil {
-			skipType = hdr
 		}
 
 		reader.offset++
@@ -649,20 +635,22 @@ func (reader *BinaryDataFileReader) ParseNext() (*DataFileMessage, error) {
 	reader.offset += headerSizeAdjustment
 	reader.remaining = len(reader.dataMap) - reader.offset
 
-	dfmt, ok := reader.formats[msgType]
+	// Get the format for this message type
+	dataFormat, ok := reader.formats[messageType]
 	if !ok {
-		return nil, fmt.Errorf("unknown message type: %d", msgType)
+		return nil, fmt.Errorf("unknown message type: %d", messageType)
 	}
 
-	if reader.remaining < dfmt.Len-headerSizeAdjustment {
-		if reader.verbose {
-			log.Println("out of data")
-		}
+	// Check if there's enough data for the full message
+	if reader.remaining < dataFormat.Len-headerSizeAdjustment {
 		return nil, fmt.Errorf("out of data")
 	}
 
-	body := reader.dataMap[reader.offset : reader.offset+dfmt.Len-headerSizeAdjustment]
-	elements, err := reader.unpackMessageElements(msgType, dfmt, body)
+	// Extract the message body
+	body := reader.dataMap[reader.offset : reader.offset+dataFormat.Len-headerSizeAdjustment]
+
+	// Unpack the message elements
+	elements, err := reader.unpackMessageElements(messageType, dataFormat, body)
 	if err != nil {
 		return nil, err
 	}
@@ -671,40 +659,52 @@ func (reader *BinaryDataFileReader) ParseNext() (*DataFileMessage, error) {
 		return reader.ParseNext()
 	}
 
-	if dfmt.Name == FmtName {
+	// If this is a format message, process it
+	if dataFormat.Name == FormatName {
 		if err := reader.processFmtMessage(elements); err != nil {
 			return reader.ParseNext()
 		}
 	}
 
-	reader.offset += dfmt.Len - headerSizeAdjustment
+	// Update reader state
+	reader.offset += dataFormat.Len - headerSizeAdjustment
 	reader.remaining = reader.dataLen - reader.offset
-	m := NewDFMessage(dfmt, elements, true, reader)
+	dataFileMessage := NewDFMessage(dataFormat, elements, true, reader)
 
-	reader.addMsg(m)
+	// Add the message to the reader's message list
+	reader.addMessage(dataFileMessage)
+
+	// Update progress percentage
 	reader.Percent = PercentMultiplier * float64(reader.offset) / float64(reader.dataLen)
 
-	return m, nil
+	return dataFileMessage, nil
 }
 
-func (reader *BinaryDataFileReader) unpackMessageElements(msgType int, dfmt *DataFileFormat, body []byte) ([]interface{}, error) {
-	if _, ok := reader.unpackers[msgType]; !ok {
-		unpacker := dfmt.getUnpacker()
-		reader.unpackers[msgType] = unpacker
+// unpack the message elements based on the message type and format
+func (reader *BinaryDataFileReader) unpackMessageElements(messageType int, dataFormat *DataFileFormat, body []byte) ([]interface{}, error) {
+	// If unpacker for this message type doesn't exist, create one
+	if _, ok := reader.unpackers[messageType]; !ok {
+		unpacker := dataFormat.getUnpacker()
+		reader.unpackers[messageType] = unpacker
 	}
-	dfmt.MsgStruct = "<" + dfmt.Format
+	// Set the message structure format
+	dataFormat.MessageStruct = "<" + dataFormat.Format
 
-	elements, err := reader.unpackers[msgType](body)
+	// Unpack the message body
+	elements, err := reader.unpackers[messageType](body)
 	if err != nil {
+		// Handle error if near end of file
 		if reader.remaining < EndOfFileGarbageLimit {
 			return nil, fmt.Errorf("no valid data")
 		}
+
 		fmt.Fprintf(os.Stderr, "Failed to parse %s/%s with len %d (remaining %d)\n",
-			dfmt.Name, dfmt.MsgStruct, len(body), reader.remaining)
+			dataFormat.Name, dataFormat.MessageStruct, len(body), reader.remaining)
 		return nil, err
 	}
 
-	for _, aIndex := range dfmt.AIndexes {
+	// Convert specific elements to int16 slices if needed
+	for _, aIndex := range dataFormat.AIndexes {
 		if aIndex < len(elements) {
 			elements[aIndex], _ = bytesToInt16Slice(elements[aIndex].([]byte))
 		}
@@ -713,65 +713,41 @@ func (reader *BinaryDataFileReader) unpackMessageElements(msgType int, dfmt *Dat
 	return elements, nil
 }
 
+// process a format (FMT) message
 func (reader *BinaryDataFileReader) processFmtMessage(elements []interface{}) error {
-	ftype, ok := elements[0].(int)
+	formatType, ok := elements[0].(int)
 	if !ok {
 		return fmt.Errorf("unexpected type for FMT message")
 	}
 
-	nameBytes, ok := elements[2].([]byte)
-	if !ok {
-		return fmt.Errorf("unexpected type for FMT message name")
-	}
-	name := string(bytes.TrimRight(nameBytes, "\x00"))
+	// Extract and process name, format, and columns
+	nameBytes, _ := elements[2].(string)
+	name := strings.TrimRight(nameBytes, "\x00")
+	formatBytes, _ := elements[3].(string)
+	format := strings.TrimRight(formatBytes, "\x00")
+	bytesSlice, _ := elements[4].(string)
+	btslicename := strings.TrimRight(bytesSlice, "\x00")
+	columns := strings.Split(btslicename, ",")
+	length, _ := elements[1].(int)
 
-	formatBytes, ok := elements[3].([]byte)
-	if !ok {
-		return fmt.Errorf("unexpected type for FMT message format")
-	}
-	format := string(bytes.TrimRight(formatBytes, "\x00"))
-
-	bytesSlice, ok := elements[4].([]uint8)
-	if !ok {
-		return fmt.Errorf("invalid data type")
-	}
-
-	columns := parseColumns(bytesSlice)
-
-	length, ok := elements[1].(int)
-	if !ok {
-		return fmt.Errorf("unexpected type for FMT message length")
-	}
-
-	mfmt, err := NewDataFileFormat(ftype, name, length, format, columns, reader.formats[ftype])
+	// Create new data file format
+	dataFormat, err := NewDataFileFormat(formatType, name, length, format, columns, reader.formats[formatType])
 	if err != nil {
 		return err
 	}
-	reader.formats[ftype] = mfmt
+
+	// Add new format to reader's formats
+	reader.formats[formatType] = dataFormat
 
 	return nil
 }
 
-func parseColumns(bytesSlice []uint8) []string {
-	var stringArray []string
-	var str string
-	for _, b := range bytesSlice {
-		if b == 0 {
-			if str != "" {
-				stringArray = append(stringArray, str)
-			}
-			str = ""
-			continue
-		}
-		str += string(b)
-	}
-
-	if len(stringArray) > 0 {
-		return strings.Split(stringArray[0], ",")
-	}
-	return []string{}
-}
-
+// converts a byte slice to a slice of int16
+// a slice is a flexible and powerful data structure that provides a view into an
+// underlying array. Technically, a slice consists of three components:
+// A pointer to the first element of the array that the slice references
+// The length of the slice (the number of elements it contains)
+// The capacity of the slice (the maximum number of elements it can contain without reallocation)
 func bytesToInt16Slice(b []byte) ([]int16, error) {
 	if len(b)%bytesPerInt16 != 0 {
 		return nil, fmt.Errorf("bytesToInt16Slice: byte slice length is not a multiple of 2")
@@ -785,6 +761,8 @@ func bytesToInt16Slice(b []byte) ([]int16, error) {
 	return result, nil
 }
 
+// finds an unused format type number. By searching for unused IDs, it ensures that new formats
+// don't overwrite or conflict with existing ones.
 func (reader *BinaryDataFileReader) FindUnusedFormat() int {
 	for i := 254; i > 1; i-- {
 		if _, ok := reader.formats[i]; !ok {
@@ -794,6 +772,7 @@ func (reader *BinaryDataFileReader) FindUnusedFormat() int {
 	return 0
 }
 
+// adds a new format to the reader's formats
 func (reader *BinaryDataFileReader) AddFormat(dfmt *DataFileFormat) *DataFileFormat {
 	newType := reader.FindUnusedFormat()
 	if newType == 0 {
@@ -804,12 +783,12 @@ func (reader *BinaryDataFileReader) AddFormat(dfmt *DataFileFormat) *DataFileFor
 	return dfmt
 }
 
-func (reader *BinaryDataFileReader) addMsg(m *DataFileMessage) {
-	msgType := m.GetType()
-	reader.Messages[msgType] = m
+func (reader *BinaryDataFileReader) addMessage(dataMessage *DataFileMessage) {
+	messageType := dataMessage.GetType()
+	reader.Messages[messageType] = dataMessage
 
-	message := m.GetMessage()
-	if msgType == "MSG" && message != "" {
+	message := dataMessage.GetMessage()
+	if messageType == "MSG" && message != "" {
 		switch {
 		case strings.Contains(message, "Rover"):
 			reader.MavType = MavTypeGroundRover
@@ -827,8 +806,8 @@ func (reader *BinaryDataFileReader) addMsg(m *DataFileMessage) {
 	}
 
 	// Code to demonstrate that we can capture the flightmode settings throughout the flight
-	if msgType == "MODE" {
-		mode := m.GetMode()
+	if messageType == "MODE" {
+		mode := dataMessage.GetMode()
 		if mode != -1 {
 			reader.flightmode = modeStringACM(mode)
 		} else {
