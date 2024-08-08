@@ -166,7 +166,7 @@ type BinaryDataFileReader struct {
 }
 
 // NewBinaryDataFileReader creates a new reader for binary data files
-func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool) (*BinaryDataFileReader, error) {
+func NewBinaryDataFileReader(r io.Reader, zeroTimeBase bool) (*BinaryDataFileReader, error) {
 	// Defining columns for the data file format
 	var columns = []string{"Type", "Length", "Name", "Format", "Columns"}
 	df, err := NewDataFileFormat(FmtTypeDefault, FormatName, FormatLength, FmtFormat, columns, nil)
@@ -203,11 +203,13 @@ func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool) (*B
 	*/
 	reader.formats[df.Typ] = df
 	reader.binaryFormats = []string{}
+	reader.unpackers = make(map[int]func([]byte) ([]interface{}, error))
 
-	// Handle file input: either as a file or a byte slice
-	if filehandle, ok := file.(*os.File); ok {
-		// If it's a file, memory map it for efficient reading
-		reader.fileHandle = filehandle
+	// Handle file input: either as a file or a byte slice.
+	switch f := r.(type) {
+	case *os.File:
+		// If it's a file, memory map it for efficient reading.
+		reader.fileHandle = f
 
 		fileInfo, err := reader.fileHandle.Stat()
 		if err != nil {
@@ -215,21 +217,20 @@ func NewBinaryDataFileReader(file io.Reader, dataLen int, zeroTimeBase bool) (*B
 		}
 
 		reader.dataLen = int(fileInfo.Size())
-		reader.unpackers = make(map[int]func([]byte) ([]interface{}, error))
 		reader.dataMap, err = mmap.MapRegion(reader.fileHandle, reader.dataLen, mmap.RDONLY, 0, 0)
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		reader.dataLen = dataLen
-		reader.dataMap = make([]byte, dataLen)
-		_, err := io.ReadFull(file, reader.dataMap)
+	default:
+		reader.dataMap, err = io.ReadAll(r)
 		if err != nil {
 			return nil, err
 		}
+
+		reader.dataLen = len(reader.dataMap)
 	}
 
-	// Initialize the reader (BinaryDataFileReader)
+	// Initialize the reader (BinaryDataFileReader).
 	reader.init()
 	return reader, nil
 }

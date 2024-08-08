@@ -31,79 +31,35 @@ func ConvertToGeoJSONFeature(g geom.Geometry, id interface{}, properties map[str
 }
 
 type BINParser struct {
-	// Add any specific fields or dependencies for BIN parsing
-	data []map[string]interface{}
-	lineString *geom.LineString
-	geometry *geom.Geometry
 }
 
-func (p *BINParser) ParseGeometry(file io.Reader) error {
-		// Implement Bin parsing logic here
-	// Return the parsed geometry coordinates
-	
-	if err := p.extractData(file); err != nil {
-		return fmt.Errorf("failed to parse data: %v", err)
+func (p *BINParser) ParseGeometry(r io.Reader) (*geom.Geometry, error) {
+	data, err := extractData(r)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse data: %v", err)
 	}
 
-	p.createPolylineFromData()
-	geometry := p.lineString.AsGeometry()
-	p.geometry = &geometry
-	return nil
+	// how to get the datetime out of the data
+	firstElement := data[0]
+	gpsTime := getTimeFromGPS(firstElement)
+	fmt.Println("GPS Time:", gpsTime)
+
+	return createGeometry(data)
 }
 
-func (p *BINParser) createPolylineFromData(){
-	var coords []float64
-
-	for _, record := range p.data {
-		lat, ok1 := record["Lat"].(float64)
-		lng, ok2 := record["Lng"].(float64)
-
-		if !ok1 || !ok2 {
-			return 
-		}
-
-		// Append lng and lat to the coords slice
-		coords = append(coords, lng, lat)
-	}
-
-	sequence := geom.NewSequence(coords, geom.DimXY)
-	linestring := geom.NewLineString(sequence)
-	p.lineString = &linestring
-}
-
-func getDataLen(reader io.Reader) (int, error) {
-    if f, ok := reader.(*os.File); ok {
-        fileInfo, err := f.Stat()
-        if err != nil {
-            return 0, err
-        }
-        return int(fileInfo.Size()), nil
-    }
-    // For other types of io.Reader, read into a buffer to determine length
-    buf, err := io.ReadAll(reader)
-    if err != nil {
-        return 0, err
-    }
-    return len(buf), nil
-}
-
-func (p *BINParser)extractData(file io.Reader) error {
+func extractData(file io.Reader) ([]map[string]interface{}, error) {
 	var data []map[string]interface{}
-	// Get the length of the data
-	dataLen, err := getDataLen(file)
-    if err != nil {
-		return fmt.Errorf("failed to get data length: %v", err)
-	}
-
+	
 	var zeroTimeBase = false
 
-	dfreader, err := fileparser.NewBinaryDataFileReader(file, dataLen, zeroTimeBase )
+	dfreader, err := fileparser.NewBinaryDataFileReader(file, zeroTimeBase )
 	if err != nil {
-		return fmt.Errorf("failed to create binary data file reader: %v", err)
+		return nil, fmt.Errorf("failed to create binary data file reader: %v", err)
 	}
 
 	if _, ok := dfreader.Messages["GPS"]; !ok {
-		return fmt.Errorf("no GPS data found in file")
+		return nil, fmt.Errorf("no GPS data found in file")
 	} 
 
 	dfreader.ParseNext()
@@ -162,11 +118,10 @@ func (p *BINParser)extractData(file io.Reader) error {
 
 	if len(data) == 0 {
 		fmt.Println("No GPS Data in File")
-		return fmt.Errorf("No GPS Data in File")
+		return nil, fmt.Errorf("no GPS Data in File")
 	}
 
-	p.data = data
-	return nil
+	return data, nil
 }
 
 func getTimeFromGPS(gpsData map[string]interface{}) time.Time {
@@ -184,7 +139,7 @@ func getTimeFromGPS(gpsData map[string]interface{}) time.Time {
 	return gpsTime
 }
 
-func createPolylineFromData(data []map[string]interface{}) (geom.LineString, error) {
+func createGeometry(data []map[string]interface{}) (*geom.Geometry, error) {
 	var coords []float64
 
 	for _, record := range data {
@@ -192,7 +147,7 @@ func createPolylineFromData(data []map[string]interface{}) (geom.LineString, err
 		lng, ok2 := record["Lng"].(float64)
 
 		if !ok1 || !ok2 {
-			return geom.LineString{}, fmt.Errorf("missing or invalid Lat or Lng in record: %v", record)
+			return nil, fmt.Errorf("missing or invalid Lat or Lng in record: %v", record)
 		}
 
 		// Append lng and lat to the coords slice
@@ -201,8 +156,8 @@ func createPolylineFromData(data []map[string]interface{}) (geom.LineString, err
 
 	sequence := geom.NewSequence(coords, geom.DimXY)
 	lineString := geom.NewLineString(sequence)
-
-	return lineString, nil
+	geometry := lineString.AsGeometry()
+	return &geometry, nil
 }
 
 func main() {
@@ -224,32 +179,18 @@ func main() {
 	defer file.Close() // Ensure the file is closed when done
 
 	// Create an io.Reader from the file
-	reader := io.Reader(file)
+	r := io.Reader(file)
 
 	parser := BINParser{}
 
-	err = parser.ParseGeometry(reader)
+	geometry, err := parser.ParseGeometry(r)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	// how to get the datetime out of the data
-	firstElement := parser.data[0]
-	gpsTime := getTimeFromGPS(firstElement)
-	fmt.Println("GPS Time:", gpsTime)
-
-	// Use the extracted data
-	polyline, err := createPolylineFromData(parser.data)
-	if err != nil {
-		fmt.Println("Error creating polyline:", err)
-		return
-	}
-
-	//fmt.Println("Polyline WKT:", polyline.AsText())
-	geometry := polyline.AsGeometry()
 	// Convert geom.Geometry to GeoJSONFeature
-	feature := ConvertToGeoJSONFeature(geometry, "example_id", map[string]interface{}{
+	feature := ConvertToGeoJSONFeature(*geometry, "example_id", map[string]interface{}{
 		"name": "Example feature",
 	})
 
