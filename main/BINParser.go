@@ -219,7 +219,7 @@ func main() {
 		}
 	}()
 
-	filename := "10.bin"
+	filename := "../test_files/10.bin"
 	file, err := os.Open(filename)
 	if err != nil {
 		fmt.Println("Error opening file:", err)
