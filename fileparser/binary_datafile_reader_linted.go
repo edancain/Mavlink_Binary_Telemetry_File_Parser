@@ -254,16 +254,16 @@ func (reader *BinaryDataFileReader) initClock() {
 
 	for {
 		count++
-		message, err := reader.recvMsg()
+		message, err := reader.ParseNext() //recvMsg()
 		if err != nil {
 			break
 		}
 
 		msgType := message.GetType()
-		firstMsStamp = reader.getFirstMsStamp(firstMsStamp, msgType, &message)
+		firstMsStamp = reader.getFirstMsStamp(firstMsStamp, msgType, message)
 
 		if msgType == MsgTypeGPS || msgType == MsgTypeGPS2 {
-			if reader.processGPSTime(&message, firstMsStamp) {
+			if reader.processGPSTime(message, firstMsStamp) {
 				break
 			}
 		}
@@ -549,7 +549,10 @@ func (reader *BinaryDataFileReader) processDefaultFormat(messageType, offset, me
 		return
 	}
 
-	reader.processFmtMessage(elements)
+	err = reader.processFmtMessage(elements)
+	if err != nil{
+		fmt.Println("process FMT Message error.")
+	}
 }
 
 func (reader *BinaryDataFileReader) needFmtuType(messageType int) bool {
@@ -595,18 +598,6 @@ func (reader *BinaryDataFileReader) processFmtuType(messageType, offset, message
 			fmt2.SetMultIds(&multIds)
 		}
 	}
-}
-
-// During clock initialization, the reader needs to process messages sequentially until it finds
-// the necessary time information.
-// This function allows the initialization code to easily retrieve messages one by one without
-// directly dealing with ParseNext()
-func (reader *BinaryDataFileReader) recvMsg() (DataFileMessage, error) {
-	message, err := reader.ParseNext()
-	if err != nil {
-		return DataFileMessage{}, err
-	}
-	return *message, nil
 }
 
 func (reader *BinaryDataFileReader) ParseNext() (*DataFileMessage, error) {

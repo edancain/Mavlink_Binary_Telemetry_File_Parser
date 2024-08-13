@@ -9,8 +9,8 @@ import (
 )
 
 /*
-This code defines a structure and methods for handling data file formats, for 
-binary data files. It includes functionality for unpacking various data types, handling 
+This code defines a structure and methods for handling data file formats, for
+binary data files. It includes functionality for unpacking various data types, handling
 different format characters, and managing metadata about the file format such as units and multipliers.
 */
 
@@ -95,8 +95,8 @@ func NewDataFileFormat(typ int, name string, fileLength int, format string, colu
 	messageFormats := []string{}
 
 	for _, c := range format {
-		// this code is essentially building up several data structures (messageFormats, messageStruct, 
-		// messageMults, and messageTypes) based on the input format string. Each of these structures holds 
+		// this code is essentially building up several data structures (messageFormats, messageStruct,
+		// messageMults, and messageTypes) based on the input format string. Each of these structures holds
 		// different aspects of how to interpret and unpack the data:
 
 		// messageFormats holds the raw format characters.
@@ -111,11 +111,11 @@ func NewDataFileFormat(typ int, name string, fileLength int, format string, colu
 			strVal, _ := val[0].(string)
 			messageStruct += strVal
 			messageMults = append(messageMults, val[1])
-			
+
 			if c == 'a' {
-				// Endianness refers to the order in which bytes are arranged into larger numerical values 
-				// when stored in memory or transmitted over a network. Big-endian (BE): The most significant 
-				// byte is stored first (at the lowest memory address). It's often used with functions in the 
+				// Endianness refers to the order in which bytes are arranged into larger numerical values
+				// when stored in memory or transmitted over a network. Big-endian (BE): The most significant
+				// byte is stored first (at the lowest memory address). It's often used with functions in the
 				// binary package, like binary.Read() or binary.Write(), to ensure data is interpreted correctly.
 				messageTypes = append(messageTypes, binary.BigEndian)
 			} else {
@@ -355,9 +355,9 @@ func readFloat64(reader *bytes.Reader) (float64, error) {
 	return val, err
 }
 
-// This function is crucial for handling data formats that include an instance field. 
-// It sets up the necessary information to correctly parse and interpret instance-specific 
-// data within the larger data structure. The instance field is likely used to distinguish 
+// This function is crucial for handling data formats that include an instance field.
+// It sets up the necessary information to correctly parse and interpret instance-specific
+// data within the larger data structure. The instance field is likely used to distinguish
 // between multiple instances of the same type of data within a single record or message.
 func (dataFormat *DataFileFormat) SetUnitIds(unitIdentifiers *string) {
 	if unitIdentifiers == nil {
@@ -366,12 +366,12 @@ func (dataFormat *DataFileFormat) SetUnitIds(unitIdentifiers *string) {
 
 	dataFormat.UnitIds = unitIdentifiers
 	instanceIndex := strings.Index(*unitIdentifiers, "#")
-	
+
 	if instanceIndex != -1 {
 		dataFormat.InstanceField = &dataFormat.Columns[instanceIndex]
 		prefixFormat := dataFormat.Format[:instanceIndex]
 		prefixStringFormat := ""
-		
+
 		for _, c := range prefixFormat {
 			if info, ok := FormatToUnpackInfo[byte(c)]; ok {
 				if stringFormat, ok := info[0].(string); ok {
