@@ -85,64 +85,11 @@ func extractData(file io.Reader) ([]map[string]interface{}, error) {
 			processGPSValues(gpsValues, seenTimes, &data)
 		}
 
-		datafileMessage, err = dfreader.ParseNext()
-		if err != nil {
-			break //EOF
-		}
+		datafileMessage, _ = dfreader.ParseNext()
 
 		fmt.Printf("%.1f%%\n", dfreader.Percent)
 	}
 	return data, nil
-
-	/* Iterate over all messages
-	for msg != nil {
-		messageCount++
-		if gpsValues, ok := msg["GPS"]; ok {
-
-			lat := 1 // float64(gpsValues.GetAttr("Lat").(int)) / 1e7
-			lon := 1 // float64(gpsValues.GetAttr("Lng").(int)) / 1e7
-
-			if lat != 0 && lon != 0{
-				// Create a dictionary from fieldnames and values
-				entryDict := make(map[string]interface{})
-				for i, field := range gpsValues.FieldNames {
-					if field == "Lat" || field == "Lng" {
-						entryDict[field] = float64(gpsValues.Elements[i].(int)) / 1e7
-					} else {
-						entryDict[field] = gpsValues.Elements[i]
-					}
-				}
-
-				// Check if this time has been seen before
-				time := entryDict["TimeMS"].(int)
-				if !seenTimes[time] {
-					// Add this time to the set of seen times
-					seenTimes[time] = true
-					data = append(data, entryDict)
-					count++
-				}
-			}
-		}
-
-		// Get the next message
-		dfreader.ParseNext()
-		msg = dfreader.Messages
-		fmt.Printf("%.1f%%\n", dfreader.Percent)
-		fmt.Printf("%d unique records\n", count)
-		fmt.Printf("\n")
-		if dfreader.Percent > 99.99 {
-			break
-		}
-	}
-
-	fmt.Println("Total messages:", messageCount)
-
-	if len(data) == 0 {
-		fmt.Println("No GPS Data in File")
-		return nil, fmt.Errorf("no GPS Data in File")
-	}
-
-	return data, nil*/
 }
 
 func processGPSValues(gpsValues *fileparser.DataFileMessage, seenTimes map[int]bool, data *[]map[string]interface{}) {
