@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -166,7 +167,17 @@ func main() {
 		}
 	}()
 
-	filename := "../test_files/10.bin"
+	// Get the directory of the currently executing file
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		fmt.Println("Failed to get current file path")
+		return
+	}
+	currentDir := filepath.Dir(currentFile)
+
+	// Construct the path to the test file
+	filename := filepath.Join(currentDir, "..", "test_files", "10.BIN")
+
 	file, err := os.Open(filename)
 	if err != nil {
 		fmt.Println("Error opening file:", err)
