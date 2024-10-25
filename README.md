@@ -1,5 +1,7 @@
 Binary File Parser for Mavlink Telemetry Data
 
+NB: This Readme is also comprehensively contained in the Binary File Parser for Mavlink Telemetry Data.pdf (and docx) 
+
 Table of Contents
     1.	Introduction
     2.	File Structure
